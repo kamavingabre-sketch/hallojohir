@@ -1681,8 +1681,8 @@ async function lookupChannelJid() {
   const invite = inviteInput.value.trim();
   if (!invite) { inviteInput.focus(); return; }
 
-  // Ekstrak kode dari URL invite atau pakai langsung jika sudah berupa kode
-  const match = invite.match(/channel\/([A-Za-z0-9_-]+)/);
+  // Ekstrak kode dari URL invite atau pakai langsung jika sudah berupa kode (RegExp string: literal /.../ di dalam template HTML akan membuat \/ hilang di output)
+  const match = invite.match(new RegExp('channel/([A-Za-z0-9_-]+)'));
   const code = match ? match[1] : invite;
 
   statusEl.textContent = '⏳ Mencari informasi saluran...';

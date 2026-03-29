@@ -131,6 +131,18 @@ export const pageDashboard = (laporan, groups) => {
 <title>Dashboard — Hallo Johor Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
+<script>
+// Defined early so inline onclick="showSec(...)" never throws ReferenceError
+const sections=['overview','laporan','grup','livechat','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',panduan:'Panduan'};
+function showSec(id,el){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on',s.id==='sec-'+id));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  if(el)el.classList.add('on');
+  const tb=document.getElementById('topbar-title');
+  if(tb)tb.textContent=titles[id]||id;
+}
+<\/script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#040d1a;--bg2:#071326;--bg3:#0d1f3c;--card:#0e1e38;--border:#1a3356;--border2:#243d5c;--cyan:#00c8ff;--cyan2:#0090c8;--green:#00e5a0;--amber:#fbbf24;--red:#ff4d6d;--purple:#a78bfa;--text:#e2eaf5;--text2:#8facc5;--muted:#4a6a8a;--sb:256px}
@@ -432,14 +444,6 @@ tr:hover td{background:rgba(13,31,60,.5)}
 </div>
 
 <script>
-const sections=['overview','laporan','grup','livechat','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',panduan:'Panduan'};
-function showSec(id,el){
-  sections.forEach(s=>document.getElementById('sec-'+s).classList.toggle('on',s===id));
-  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
-  if(el)el.classList.add('on');
-  document.getElementById('topbar-title').textContent=titles[id]||id;
-}
 function filterTable(){
   const q=document.getElementById('search-box').value.toLowerCase();
   const kat=document.getElementById('filter-kat').value;
@@ -470,7 +474,7 @@ function showDetail(jsonStr){
   html+=row('Uraian',esc(l.isi)||'-');
   html+='<hr class="detail-divider">';
   html+=row('Alamat',esc(l.alamat)||'-');
-  html+=row('Lokasi','<a class="map-link" href="https://maps.google.com/?q='+lat+','+lon+'" target="_blank">📍 '+lat+', '+lon+' — Buka Google Maps</a>');
+  html+=row('Lokasi','<a class="map-link" href="https://maps.google.com/?q='+lat+','+lon+'" target="_blank" rel="noopener">📍 '+lat+', '+lon+' \u2014 Buka Google Maps</a>');
   html+=row('Waktu',esc(l.tanggal?new Date(l.tanggal).toLocaleString('id-ID',{timeZone:'Asia/Jakarta',dateStyle:'full',timeStyle:'short'}):'-'));
   html+='<hr class="detail-divider">';
   if (l.fotoPath) {

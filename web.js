@@ -1509,11 +1509,15 @@ async function updateLaporanStatus(laporanId, btn) {
       const bg    = BG_MAP[status]    || 'rgba(148,163,184,.15)';
       const newBadge = \`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:\${bg};color:\${color};border:1px solid \${color}33">\${label}</span>\`;
       document.querySelectorAll('#table-body tr').forEach(row => {
-        const detBtn = row.querySelector('.det-btn');
-        if (detBtn && detBtn.getAttribute('onclick') && detBtn.getAttribute('onclick').includes('"id":' + laporanId + ',')) {
-          // kolom status adalah kolom ke-6 (index 5)
-          const cells = row.querySelectorAll('td');
-          if (cells[5]) cells[5].innerHTML = newBadge;
+        const detBtn = row.querySelector('.det-btn[data-laporan]');
+        if (detBtn) {
+          try {
+            const lapData = JSON.parse(detBtn.dataset.laporan);
+            if (String(lapData.id) === String(laporanId)) {
+              const cells = row.querySelectorAll('td');
+              if (cells[5]) cells[5].innerHTML = newBadge;
+            }
+          } catch {}
         }
       });
       setTimeout(() => { msgEl.style.display = 'none'; }, 3000);

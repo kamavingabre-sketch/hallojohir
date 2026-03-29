@@ -265,7 +265,7 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
     const mediaHtml = b.mediaFilename
       ? (b.mediaMime?.startsWith('video/')
           ? `<div class="bc-video-icon">🎬</div>`
-          : `<img class="bc-thumb" src="/broadcast-media/${esc(b.mediaFilename)}" onclick="window.open(this.src,'_blank')" alt="media">`)
+          : `<img class="bc-thumb" src="/broadcast-media/${esc(b.mediaFilename)}" data-open-src="/broadcast-media/${esc(b.mediaFilename)}" alt="media">`)
       : '<span class="text-muted fz12">—</span>';
     return `<tr class="bc-hist-item">
       <td><span class="${badgeCls}">${STATUS_BC[b.status]||b.status}</span></td>
@@ -835,8 +835,10 @@ textarea.kg-input{resize:vertical;min-height:72px}
 
 <script>
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.det-btn');
-  if (btn && btn.dataset.laporan) showDetail(btn.dataset.laporan);
+  const det = e.target.closest('.det-btn[data-laporan]');
+  if (det) { showDetail(det.dataset.laporan); return; }
+  const img = e.target.closest('[data-open-src]');
+  if (img) { window.open(img.dataset.openSrc, '_blank'); return; }
 });
 function filterTable(){
   const q=document.getElementById('search-box').value.toLowerCase();
@@ -1728,7 +1730,7 @@ async function refreshBcHistory() {
       const mediaHtml = b.mediaFilename
         ? (b.mediaMime?.startsWith('video/')
             ? '<div class="bc-video-icon">🎬</div>'
-            : '<img class="bc-thumb" src="/broadcast-media/' + esc(b.mediaFilename) + '" onclick="window.open(this.src,\'_blank\')" alt="media">')
+            : '<img class="bc-thumb" src="/broadcast-media/' + esc(b.mediaFilename) + '" data-open-src="/broadcast-media/' + esc(b.mediaFilename) + '" alt="media">')
         : '<span class="text-muted fz12">—</span>';
       return '<tr class="bc-hist-item">'
         + '<td><span class="' + badgeCls + '">' + (STATUS_BC[b.status]||b.status) + '</span></td>'

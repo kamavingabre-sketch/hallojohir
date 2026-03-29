@@ -295,14 +295,8 @@ function startBroadcastWorker(sock) {
           : null;
         const hasMedia = mediaPath && fs.existsSync(mediaPath);
 
-        // Helper: kirim via API yang tepat sesuai jenis JID
-        const sendFn = async (payload) => {
-          if (isNewsletter) {
-            return sock.newsletterSendMessage(jid, payload);
-          } else {
-            return sock.sendMessage(jid, payload);
-          }
-        };
+        // Saluran (@newsletter) dan grup: Baileys memakai sendMessage; relayMessage mengode plaintext untuk newsletter.
+        const sendFn = (payload) => sock.sendMessage(jid, payload);
 
         if (hasMedia) {
           const mediaBuffer = fs.readFileSync(mediaPath);
@@ -318,7 +312,7 @@ function startBroadcastWorker(sock) {
               // Fallback ke teks saja — bug Baileys: media newsletter pakai CDN path berbeda (/o1/ vs /m1/)
               logger.warn('BROADCAST', `Media ke newsletter gagal, fallback ke teks`, mediaErr.message);
               const fallbackText = [bc.pesan, '_(Foto/video tidak dapat dikirim ke saluran saat ini)_'].filter(Boolean).join('\n');
-              await sock.newsletterSendMessage(jid, { text: fallbackText });
+              await sock.sendMessage(jid, { text: fallbackText });
             } else {
               throw mediaErr;
             }

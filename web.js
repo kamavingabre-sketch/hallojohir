@@ -188,7 +188,7 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
       <td>${statusBadgeHtml(l.status)}</td>
       <td><a class="map-link" href="https://maps.google.com/?q=${l.koordinat?.lat||0},${l.koordinat?.lon||0}" target="_blank">📍 Peta</a></td>
       <td class="fz12 text-muted2">${fmtDate(l.tanggal)}</td>
-      <td style="white-space:nowrap"><button class="det-btn" onclick='showDetail(${JSON.stringify(JSON.stringify(l))})'>Detail</button><button class="del-lap-btn" data-id="${l.id}" onclick="deleteLaporanRow(this.dataset.id,this)">🗑️</button></td>
+      <td style="white-space:nowrap"><button class="det-btn" data-laporan="${esc(JSON.stringify(l))}">Detail</button><button class="del-lap-btn" data-id="${l.id}" onclick="deleteLaporanRow(this.dataset.id,this)">🗑️</button></td>
     </tr>`).join('');
 
   const katOpts = allKat.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
@@ -228,7 +228,7 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
       <td><span class="kat-tag">${esc(l.kategori)}</span></td>
       <td>${esc(l.kelurahan)}</td>
       <td class="fz12 text-muted2">${fmtDate(l.tanggal)}</td>
-      <td><button class="det-btn" onclick='showDetail(${JSON.stringify(JSON.stringify(l))})'>Detail</button></td>
+      <td><button class="det-btn" data-laporan="${esc(JSON.stringify(l))}">Detail</button></td>
     </tr>`).join('');
 
   const kegiatanCards = kegiatan.length ? kegiatan.map(k => `
@@ -286,6 +286,17 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
 <title>Dashboard — Hallo Johor Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
+<script>
+const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',panduan:'Panduan'};
+function showSec(id,el){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on',s.id==='sec-'+id));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  if(el)el.classList.add('on');
+  const tb=document.getElementById('topbar-title');
+  if(tb)tb.textContent=titles[id]||id;
+}
+<\/script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#040d1a;--bg2:#071326;--bg3:#0d1f3c;--card:#0e1e38;--border:#1a3356;--border2:#243d5c;--cyan:#00c8ff;--cyan2:#0090c8;--green:#00e5a0;--amber:#fbbf24;--red:#ff4d6d;--purple:#a78bfa;--text:#e2eaf5;--text2:#8facc5;--muted:#4a6a8a;--sb:256px}
@@ -823,14 +834,10 @@ textarea.kg-input{resize:vertical;min-height:72px}
 </div>
 
 <script>
-const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',panduan:'Panduan'};
-function showSec(id,el){
-  sections.forEach(s=>document.getElementById('sec-'+s).classList.toggle('on',s===id));
-  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
-  if(el)el.classList.add('on');
-  document.getElementById('topbar-title').textContent=titles[id]||id;
-}
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.det-btn');
+  if (btn && btn.dataset.laporan) showDetail(btn.dataset.laporan);
+});
 function filterTable(){
   const q=document.getElementById('search-box').value.toLowerCase();
   const kat=document.getElementById('filter-kat').value;
@@ -961,7 +968,7 @@ function fmtDateClient(iso) {
 
 function buildRow(l) {
   const id='#'+String(l.id||0).padStart(4,'0');
-  const jsonEsc=esc(JSON.stringify(l)).replace(/'/g,"\\\\'");
+  const jsonEsc=esc(JSON.stringify(l));
   return '<tr data-kat="'+esc(l.kategori)+'" data-kel="'+esc(l.kelurahan)+'" style="animation:fi .4s ease both">'
     +'<td><span class="id-badge">'+id+'</span></td>'
     +'<td><div class="fw5">'+esc(l.namaPelapor)+'</div><div class="fz12 text-muted">'+esc((l.pelapor||'').replace('@s.whatsapp.net',''))+'</div></td>'
@@ -970,7 +977,7 @@ function buildRow(l) {
     +'<td class="fz13 text-muted2" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(l.isi)+'">'+(l.isi||'').substring(0,60)+((l.isi||'').length>60?'…':'')+'</td>'
     +'<td><a class="map-link" href="https://maps.google.com/?q='+(l.koordinat?.lat||0)+','+(l.koordinat?.lon||0)+'" target="_blank">📍 Peta</a></td>'
     +'<td class="fz12 text-muted2">'+fmtDateClient(l.tanggal)+'</td>'
-    +'<td><button class="det-btn" onclick=\\'showDetail(JSON.stringify('+jsonEsc+'))\\'>Detail</button></td>'
+    +'<td><button class="det-btn" data-laporan="'+jsonEsc+'">Detail</button></td>'
     +'</tr>';
 }
 
@@ -1009,14 +1016,14 @@ evtSource.addEventListener('update', (e) => {
     const allRows = Array.from(overviewTbody.querySelectorAll('tr'));
     newItems.reverse().forEach(l => {
       const id='#'+String(l.id||0).padStart(4,'0');
-      const jsonEsc=esc(JSON.stringify(l)).replace(/'/g,"\\\\'");
+      const jsonEsc=esc(JSON.stringify(l));
       const row='<tr style="animation:fi .4s ease both">'
         +'<td><span class="id-badge">'+id+'</span></td>'
         +'<td class="fw5">'+esc(l.namaPelapor)+'</td>'
         +'<td><span class="kat-tag">'+esc(l.kategori)+'</span></td>'
         +'<td>'+esc(l.kelurahan)+'</td>'
         +'<td class="fz12 text-muted2">'+fmtDateClient(l.tanggal)+'</td>'
-        +'<td><button class="det-btn" onclick=\\'showDetail(JSON.stringify('+jsonEsc+'))\\'>Detail</button></td>'
+        +'<td><button class="det-btn" data-laporan="'+jsonEsc+'">Detail</button></td>'
         +'</tr>';
       overviewTbody.insertAdjacentHTML('afterbegin', row);
     });

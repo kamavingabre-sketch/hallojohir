@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel } from './store.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
+import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -726,6 +727,27 @@ textarea.kg-input{resize:vertical;min-height:72px}
           📢 Kirim Broadcast
         </button>
         <div class="bc-status" id="bc-status"></div>
+      </div>
+
+      <div class="bc-channel-box" style="border-color:rgba(21,73,115,.35)">
+        <div class="bc-channel-title">📰 Berita Harian — Pemko Medan</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.75">
+          Sumber: <a href="https://portal.medan.go.id/berita" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">portal.medan.go.id/berita</a>
+          — judul, ringkasan, dan foto diambil otomatis dari halaman tersebut. Pilih <b>saluran tujuan</b> di bagian atas, lalu muat pratinjau atau langsung unggah.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+          <label class="bc-label" style="margin:0">Jumlah berita:</label>
+          <select class="bc-select" id="medan-bc-count" style="max-width:100px">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+          </select>
+          <button type="button" class="ref-btn" onclick="loadMedanBeritaPreview()">🔄 Muat pratinjau</button>
+          <button type="button" class="bc-send-btn" style="margin:0;padding:9px 18px;font-size:13px" onclick="queueMedanBeritaHarian()" id="medan-upload-btn">📤 Upload Berita Harian</button>
+        </div>
+        <div id="medan-berita-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
+        <div id="medan-berita-preview" style="font-size:12px;color:var(--text2)">Klik <b>Muat pratinjau</b> untuk melihat cuplikan berita terbaru (teks + gambar).</div>
       </div>
 
       <!-- ─ Saluran Management ─ -->
@@ -1673,6 +1695,68 @@ async function sendBroadcast() {
   }
 }
 
+async function loadMedanBeritaPreview() {
+  const el = document.getElementById('medan-berita-preview');
+  const st = document.getElementById('medan-berita-status');
+  const n = document.getElementById('medan-bc-count').value;
+  el.innerHTML = '⏳ Memuat berita dari portal Pemko Medan...';
+  st.style.display = 'none';
+  try {
+    const res = await fetch('/api/medan-berita?limit=' + encodeURIComponent(n));
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    if (!json.items || !json.items.length) {
+      el.textContent = 'Tidak ada berita yang bisa dibaca dari halaman.';
+      return;
+    }
+    el.innerHTML = json.items.map(it =>
+      '<div style="display:flex;gap:12px;margin-bottom:14px;padding:12px;background:var(--bg3);border-radius:10px;border:1px solid var(--border)">' +
+      '<img src="' + esc(it.imageUrl) + '" alt="" style="width:100px;height:72px;object-fit:cover;border-radius:6px;flex-shrink:0" loading="lazy">' +
+      '<div><div style="font-weight:600;color:var(--text);margin-bottom:4px">' + esc(it.title) + '</div>' +
+      '<div style="opacity:.92;line-height:1.45">' + esc(it.description.length > 220 ? it.description.slice(0, 220) + '…' : it.description) + '</div></div></div>'
+    ).join('');
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    el.textContent = '';
+  }
+}
+
+async function queueMedanBeritaHarian() {
+  const target = document.getElementById('bc-target').value.trim();
+  const st = document.getElementById('medan-berita-status');
+  const btn = document.getElementById('medan-upload-btn');
+  if (!target) {
+    st.textContent = '⚠️ Pilih saluran tujuan di bagian \"Buat Broadcast Baru\" di atas.';
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    return;
+  }
+  const limit = parseInt(document.getElementById('medan-bc-count').value, 10) || 3;
+  btn.disabled = true;
+  st.style.display = 'block';
+  st.className = 'bc-ch-status ok';
+  st.textContent = '⏳ Mengunduh gambar & mengantre broadcast...';
+  try {
+    const res = await fetch('/api/medan-berita/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelJid: target, limit })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    st.textContent = '✅ ' + (json.message || 'Berita diantrekan.');
+    st.className = 'bc-ch-status ok';
+    setTimeout(() => refreshBcHistory(), 2500);
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function lookupChannelJid() {
   const inviteInput = document.getElementById('bc-invite-input');
   const jidInput    = document.getElementById('bc-jid-input');
@@ -2556,6 +2640,65 @@ function copyIt() {
         ok: true,
         history: getBroadcastHistory(30),
         channels: getBroadcastChannels(),
+      }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Berita Pemko Medan (portal.medan.go.id/berita) ──
+  if (path_ === '/api/medan-berita' && req.method === 'GET') {
+    try {
+      const limit = Math.min(10, Math.max(1, parseInt(url_.searchParams.get('limit') || '5', 10)));
+      const items = await scrapeMedanBeritaArticles(limit);
+      return send(200, JSON.stringify({ ok: true, items }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/medan-berita/queue' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const channelJid = (body.channelJid || '').trim();
+      const limit = Math.min(10, Math.max(1, parseInt(body.limit ?? 3, 10)));
+      if (!channelJid) {
+        return send(400, JSON.stringify({ ok: false, error: 'channelJid diperlukan' }), 'application/json');
+      }
+      const articles = await scrapeMedanBeritaArticles(limit);
+      if (!articles.length) {
+        return send(400, JSON.stringify({ ok: false, error: 'Tidak ada berita di halaman portal' }), 'application/json');
+      }
+      const ids = [];
+      const t0 = Date.now();
+      for (let i = 0; i < articles.length; i++) {
+        const art = articles[i];
+        let mediaFilename = null;
+        let mediaMime = null;
+        try {
+          const { buffer, mime } = await downloadImageBuffer(art.imageUrl);
+          mediaMime = mime;
+          const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+          mediaFilename = `bc_medan_${t0}_${i}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+          fs.writeFileSync(path.join(BROADCAST_MEDIA_DIR, mediaFilename), buffer);
+        } catch {
+          mediaFilename = null;
+          mediaMime = null;
+        }
+        const pesan = `*${art.title}*\n\n${art.description}\n\n📰 Pemko Medan\n${art.articleUrl}`;
+        const entry = queueBroadcast({
+          channelJid,
+          pesan,
+          mediaFilename,
+          mediaMime,
+        });
+        ids.push(entry.id);
+      }
+      return send(200, JSON.stringify({
+        ok: true,
+        message: `${ids.length} broadcast berita diantrekan. Bot akan mengirim bergiliran (±2,5 detik antar pesan).`,
+        queued: ids.length,
+        ids,
       }), 'application/json');
     } catch (err) {
       return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');

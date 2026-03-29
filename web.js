@@ -731,10 +731,18 @@ textarea.kg-input{resize:vertical;min-height:72px}
       <!-- ─ Saluran Management ─ -->
       <div class="bc-channel-box">
         <div class="bc-channel-title">➕ Daftarkan Saluran WhatsApp</div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
-          Masukkan JID saluran/newsletter WhatsApp. Format:
-          <code style="color:#a78bfa;background:var(--bg3);padding:1px 6px;border-radius:4px">120363xxxxxxxxxx@newsletter</code>
-          atau grup biasa <code style="color:#a78bfa;background:var(--bg3);padding:1px 6px;border-radius:4px">1206xxxxxxxxxx@g.us</code>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.8">
+          <b style="color:var(--text)">Cara mendapatkan JID saluran:</b><br>
+          1. Buka saluran WhatsApp Anda → Klik titik tiga → <b>Info Saluran</b><br>
+          2. Salin link undangan, misal: <code style="color:#a78bfa;background:var(--bg3);padding:1px 5px;border-radius:4px">https://whatsapp.com/channel/0029Va...</code><br>
+          3. Tempel link di bawah lalu klik <b>Cari JID</b>, atau masukkan JID langsung:<br>
+          &nbsp;&nbsp;&nbsp;<code style="color:#a78bfa;background:var(--bg3);padding:1px 5px;border-radius:4px">120363xxxxxxxxxx@newsletter</code>
+          &nbsp; atau grup &nbsp;
+          <code style="color:#a78bfa;background:var(--bg3);padding:1px 5px;border-radius:4px">120xxxxxxxxxx@g.us</code>
+        </div>
+        <div class="bc-add-row" style="margin-bottom:8px">
+          <input class="bc-ch-input" id="bc-invite-input" placeholder="https://whatsapp.com/channel/... (link undangan)" type="text" style="flex:2">
+          <button class="bc-add-ch-btn" onclick="lookupChannelJid()" style="background:rgba(0,200,255,.12);border-color:rgba(0,200,255,.3);color:var(--cyan)">🔍 Cari JID</button>
         </div>
         <div class="bc-add-row">
           <input class="bc-ch-input" id="bc-jid-input" placeholder="120363xxxxxxxxxx@newsletter" type="text">
@@ -1665,6 +1673,44 @@ async function sendBroadcast() {
   }
 }
 
+async function lookupChannelJid() {
+  const inviteInput = document.getElementById('bc-invite-input');
+  const jidInput    = document.getElementById('bc-jid-input');
+  const nameInput   = document.getElementById('bc-name-input');
+  const statusEl    = document.getElementById('bc-ch-status');
+  const invite = inviteInput.value.trim();
+  if (!invite) { inviteInput.focus(); return; }
+
+  // Ekstrak kode dari URL invite atau pakai langsung jika sudah berupa kode
+  const match = invite.match(/channel\/([A-Za-z0-9_-]+)/);
+  const code = match ? match[1] : invite;
+
+  statusEl.textContent = '⏳ Mencari informasi saluran...';
+  statusEl.className = 'bc-ch-status ok';
+
+  try {
+    const res  = await fetch('/api/newsletter/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteCode: code }),
+    });
+    const json = await res.json();
+    if (json.ok && json.jid) {
+      jidInput.value  = json.jid;
+      nameInput.value = nameInput.value || json.name || '';
+      statusEl.textContent = '✅ JID ditemukan! Silakan klik Tambah untuk mendaftarkan.';
+      statusEl.className = 'bc-ch-status ok';
+      inviteInput.value = '';
+    } else {
+      statusEl.textContent = '❌ ' + (json.error || 'Saluran tidak ditemukan. Pastikan link undangan benar.');
+      statusEl.className = 'bc-ch-status err';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ Error: ' + e.message;
+    statusEl.className = 'bc-ch-status err';
+  }
+}
+
 async function addBcChannel() {
   const jidInput  = document.getElementById('bc-jid-input');
   const nameInput = document.getElementById('bc-name-input');
@@ -2404,6 +2450,44 @@ function copyIt() {
     const fileBuffer = fs.readFileSync(mediaFile);
     res.writeHead(200, { 'Content-Type': mediaMime, 'Cache-Control': 'public, max-age=86400' });
     return res.end(fileBuffer);
+  }
+
+  // ── API: Newsletter – Lookup JID dari invite code ──
+  // Karena web.js tidak punya akses ke sock Baileys, kita tulis request ke file
+  // lalu bot worker membaca & menulis hasilnya. Polling max 8 detik.
+  if (path_ === '/api/newsletter/lookup' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const { inviteCode } = body;
+      if (!inviteCode) return send(400, JSON.stringify({ ok: false, error: 'inviteCode diperlukan' }), 'application/json');
+
+      // Sanitasi kode: hanya ambil bagian alfanumerik dari URL
+      const code = inviteCode.replace(/^.*channel\//i, '').replace(/[^A-Za-z0-9_-]/g, '');
+      if (!code) return send(400, JSON.stringify({ ok: false, error: 'Format invite tidak valid' }), 'application/json');
+
+      const reqFile = path.join(__dirname, CONFIG.DATA_DIR, 'newsletter_lookup_req.json');
+      const resFile = path.join(__dirname, CONFIG.DATA_DIR, 'newsletter_lookup_res.json');
+
+      // Hapus hasil lama, tulis request baru
+      if (fs.existsSync(resFile)) fs.unlinkSync(resFile);
+      fs.writeFileSync(reqFile, JSON.stringify({ code, requestedAt: Date.now() }), 'utf8');
+
+      // Poll tunggu hasil dari bot (max 8 detik)
+      const timeout = Date.now() + 8000;
+      while (Date.now() < timeout) {
+        await new Promise(r => setTimeout(r, 400));
+        if (fs.existsSync(resFile)) {
+          try {
+            const result = JSON.parse(fs.readFileSync(resFile, 'utf8'));
+            fs.unlinkSync(resFile);
+            return send(200, JSON.stringify(result), 'application/json');
+          } catch {}
+        }
+      }
+      return send(200, JSON.stringify({ ok: false, error: 'Bot tidak merespons. Pastikan bot sedang berjalan dan terhubung ke WhatsApp.' }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
   }
 
   // ── API: Broadcast – Kirim ──

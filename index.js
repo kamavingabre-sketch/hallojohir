@@ -232,6 +232,47 @@ function startLivechatReplyWorker(sock) {
   logger.info('LIVECHAT', '💬 LiveChat reply worker aktif (poll setiap 2 detik)');
 }
 
+// ─── Newsletter Lookup Worker ─────────────────────────────
+// Dibaca dari dashboard: file newsletter_lookup_req.json
+// Hasilnya ditulis ke newsletter_lookup_res.json
+function startNewsletterLookupWorker(sock) {
+  const REQ_FILE = './data/newsletter_lookup_req.json';
+  const RES_FILE = './data/newsletter_lookup_res.json';
+
+  setInterval(async () => {
+    if (!fs.existsSync(REQ_FILE)) return;
+    let req;
+    try {
+      req = JSON.parse(fs.readFileSync(REQ_FILE, 'utf8'));
+      fs.unlinkSync(REQ_FILE); // hapus segera agar tidak diproses dua kali
+    } catch { return; }
+
+    if (!req?.code) return;
+    // Abaikan request yang sudah lebih dari 15 detik (sudah timeout di web)
+    if (Date.now() - (req.requestedAt || 0) > 15000) return;
+
+    try {
+      const meta = await sock.newsletterMetadata('invite', req.code);
+      fs.writeFileSync(RES_FILE, JSON.stringify({
+        ok: true,
+        jid: meta.id,
+        name: meta.name || meta.id,
+        description: meta.description || '',
+        subscribers: meta.subscribers || 0,
+      }), 'utf8');
+      logger.success('NEWSLETTER', `Lookup berhasil: ${meta.name} (${meta.id})`);
+    } catch (err) {
+      fs.writeFileSync(RES_FILE, JSON.stringify({
+        ok: false,
+        error: 'Saluran tidak ditemukan atau link sudah kadaluarsa: ' + err.message,
+      }), 'utf8');
+      logger.warn('NEWSLETTER', `Lookup gagal untuk kode: ${req.code}`, err.message);
+    }
+  }, 1000);
+
+  logger.info('NEWSLETTER', '🔍 Newsletter lookup worker aktif');
+}
+
 // ─── Broadcast Worker ────────────────────────────────────
 // Poll broadcast_queue.json setiap 5 detik
 // Kirim pesan/foto/video ke saluran WhatsApp (newsletter / grup)
@@ -248,37 +289,49 @@ function startBroadcastWorker(sock) {
         const jid = bc.channelJid;
         if (!jid) { markBroadcastDone(bc.id, 'failed', 'channelJid kosong'); continue; }
 
+        const isNewsletter = jid.endsWith('@newsletter');
         const mediaPath = bc.mediaFilename
           ? path.join(__dirname, 'data', 'broadcast_media', bc.mediaFilename)
           : null;
         const hasMedia = mediaPath && fs.existsSync(mediaPath);
 
+        // Helper: kirim via API yang tepat sesuai jenis JID
+        const sendFn = async (payload) => {
+          if (isNewsletter) {
+            return sock.newsletterSendMessage(jid, payload);
+          } else {
+            return sock.sendMessage(jid, payload);
+          }
+        };
+
         if (hasMedia) {
           const mediaBuffer = fs.readFileSync(mediaPath);
           const isVideo = (bc.mediaMime || '').startsWith('video/');
-
-          if (isVideo) {
-            await sock.sendMessage(jid, {
-              video: mediaBuffer,
-              caption: bc.pesan || '',
-              mimetype: bc.mediaMime || 'video/mp4',
-            });
-          } else {
-            await sock.sendMessage(jid, {
-              image: mediaBuffer,
-              caption: bc.pesan || '',
-              mimetype: bc.mediaMime || 'image/jpeg',
-            });
+          try {
+            if (isVideo) {
+              await sendFn({ video: mediaBuffer, caption: bc.pesan || '', mimetype: bc.mediaMime || 'video/mp4' });
+            } else {
+              await sendFn({ image: mediaBuffer, caption: bc.pesan || '', mimetype: bc.mediaMime || 'image/jpeg' });
+            }
+          } catch (mediaErr) {
+            if (isNewsletter) {
+              // Fallback ke teks saja — bug Baileys: media newsletter pakai CDN path berbeda (/o1/ vs /m1/)
+              logger.warn('BROADCAST', `Media ke newsletter gagal, fallback ke teks`, mediaErr.message);
+              const fallbackText = [bc.pesan, '_(Foto/video tidak dapat dikirim ke saluran saat ini)_'].filter(Boolean).join('\n');
+              await sock.newsletterSendMessage(jid, { text: fallbackText });
+            } else {
+              throw mediaErr;
+            }
           }
         } else if (bc.pesan) {
-          await sock.sendMessage(jid, { text: bc.pesan });
+          await sendFn({ text: bc.pesan });
         } else {
           markBroadcastDone(bc.id, 'failed', 'Tidak ada pesan maupun media');
           continue;
         }
 
         markBroadcastDone(bc.id, 'sent');
-        logger.success('BROADCAST', `Broadcast terkirim → ${jid}`, bc.pesan?.substring(0, 40) || `[${bc.mediaMime}]`);
+        logger.success('BROADCAST', `Broadcast terkirim → ${jid} ${isNewsletter ? '[newsletter]' : '[grup]'}`, bc.pesan?.substring(0, 40) || `[${bc.mediaMime}]`);
 
       } catch (err) {
         markBroadcastDone(bc.id, 'failed', err.message);
@@ -407,6 +460,7 @@ async function startBot() {
       startStatusNotifWorker(sock);
       startLivechatReplyWorker(sock);
       startBroadcastWorker(sock);
+      startNewsletterLookupWorker(sock);
     }
 
     if (connection === 'close') {

@@ -15,8 +15,11 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import readline from 'readline';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { handleMessage } from './handler.js';
-import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone } from './store.js';
+import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone } from './store.js';
 import logger from './logger.js';
 
 // ─── Configuration ────────────────────────────────────────
@@ -76,6 +79,7 @@ function restoreAuthFromEnv() {
 let feedbackInterval = null;
 let livechatReplyInterval = null;
 let statusNotifInterval = null;
+let broadcastInterval = null;
 
 function startFeedbackWorker(sock) {
   // Bersihkan interval lama jika ada (reconnect)
@@ -228,6 +232,67 @@ function startLivechatReplyWorker(sock) {
   logger.info('LIVECHAT', '💬 LiveChat reply worker aktif (poll setiap 2 detik)');
 }
 
+// ─── Broadcast Worker ────────────────────────────────────
+// Poll broadcast_queue.json setiap 5 detik
+// Kirim pesan/foto/video ke saluran WhatsApp (newsletter / grup)
+function startBroadcastWorker(sock) {
+  if (broadcastInterval) clearInterval(broadcastInterval);
+
+  broadcastInterval = setInterval(async () => {
+    let pending;
+    try { pending = getPendingBroadcasts(); }
+    catch { return; }
+
+    for (const bc of pending) {
+      try {
+        const jid = bc.channelJid;
+        if (!jid) { markBroadcastDone(bc.id, 'failed', 'channelJid kosong'); continue; }
+
+        const mediaPath = bc.mediaFilename
+          ? path.join(__dirname, 'data', 'broadcast_media', bc.mediaFilename)
+          : null;
+        const hasMedia = mediaPath && fs.existsSync(mediaPath);
+
+        if (hasMedia) {
+          const mediaBuffer = fs.readFileSync(mediaPath);
+          const isVideo = (bc.mediaMime || '').startsWith('video/');
+
+          if (isVideo) {
+            await sock.sendMessage(jid, {
+              video: mediaBuffer,
+              caption: bc.pesan || '',
+              mimetype: bc.mediaMime || 'video/mp4',
+            });
+          } else {
+            await sock.sendMessage(jid, {
+              image: mediaBuffer,
+              caption: bc.pesan || '',
+              mimetype: bc.mediaMime || 'image/jpeg',
+            });
+          }
+        } else if (bc.pesan) {
+          await sock.sendMessage(jid, { text: bc.pesan });
+        } else {
+          markBroadcastDone(bc.id, 'failed', 'Tidak ada pesan maupun media');
+          continue;
+        }
+
+        markBroadcastDone(bc.id, 'sent');
+        logger.success('BROADCAST', `Broadcast terkirim → ${jid}`, bc.pesan?.substring(0, 40) || `[${bc.mediaMime}]`);
+
+      } catch (err) {
+        markBroadcastDone(bc.id, 'failed', err.message);
+        logger.error('BROADCAST', `Gagal broadcast → ${bc.channelJid}`, err.message);
+      }
+
+      // Jeda antar kirim agar tidak rate-limit
+      await delay(2500);
+    }
+  }, 5000);
+
+  logger.info('BROADCAST', '📢 Broadcast worker aktif (poll setiap 5 detik)');
+}
+
 // ─── Start Bot ───────────────────────────────────────────
 async function startBot() {
   logger.banner();
@@ -341,6 +406,7 @@ async function startBot() {
       startFeedbackWorker(sock);
       startStatusNotifWorker(sock);
       startLivechatReplyWorker(sock);
+      startBroadcastWorker(sock);
     }
 
     if (connection === 'close') {

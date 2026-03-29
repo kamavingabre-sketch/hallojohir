@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel } from './store.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +68,10 @@ const parseJSONBody = (req) => new Promise(resolve => {
 // Pastikan folder foto_feedback tersedia
 const FOTO_FEEDBACK_DIR = path.join(__dirname, CONFIG.DATA_DIR, 'foto_feedback');
 if (!fs.existsSync(FOTO_FEEDBACK_DIR)) fs.mkdirSync(FOTO_FEEDBACK_DIR, { recursive: true });
+
+// Pastikan folder broadcast_media tersedia
+const BROADCAST_MEDIA_DIR = path.join(__dirname, CONFIG.DATA_DIR, 'broadcast_media');
+if (!fs.existsSync(BROADCAST_MEDIA_DIR)) fs.mkdirSync(BROADCAST_MEDIA_DIR, { recursive: true });
 
 const readJSON = (file) => {
   const p = path.join(__dirname, CONFIG.DATA_DIR, file);
@@ -144,7 +148,7 @@ input:focus{border-color:#0090c8;box-shadow:0 0 0 3px rgba(0,200,255,.1)}
   <p class="foot">Kecamatan Medan Johor — Sistem Pengaduan Digital</p>
 </div></body></html>`;
 
-const pageDashboard = (laporan, groups, routing = {}, kegiatan = []) => {
+const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = []) => {
   const total = laporan.length;
   const now = new Date();
   const today = laporan.filter(l => new Date(l.tanggal).toDateString() === now.toDateString()).length;
@@ -241,6 +245,41 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = []) => {
       <button class="kg-del-btn" onclick="deleteKegiatan('${esc(k.id)}',this)">🗑️ Hapus</button>
     </div>`).join('') :
     `<div class="kg-empty"><div class="ico">📭</div>Belum ada kegiatan. Tambahkan melalui form di atas.</div>`;
+
+  // ── Broadcast: channel rows & history ──
+  const bcChannelRows = bcChannels.length ? bcChannels.map(c => `
+    <tr>
+      <td class="fz13 fw5">${esc(c.name)}</td>
+      <td><span class="id-badge fz11">${esc(c.jid)}</span></td>
+      <td class="fz12 text-muted2">${fmtDate(c.addedAt)}</td>
+      <td><span class="status-ok">● Aktif</span></td>
+      <td><button class="del-ch-btn" data-jid="${esc(c.jid)}" data-name="${esc(c.name)}" onclick="deleteBcChannel(this.dataset.jid,this.dataset.name)">🗑️ Hapus</button></td>
+    </tr>`).join('') :
+    `<tr><td colspan="5" class="empty-row">Belum ada saluran terdaftar</td></tr>`;
+
+  const STATUS_BC = { sent:'✅ Terkirim', pending:'⏳ Mengantre', failed:'❌ Gagal' };
+  const bcHistRows = bcHistory.length ? bcHistory.map(b => {
+    const ch = bcChannels.find(c => c.jid === b.channelJid);
+    const chName = ch ? esc(ch.name) : esc(b.channelJid || '-');
+    const badgeCls = b.status==='sent' ? 'bc-badge-sent' : b.status==='failed' ? 'bc-badge-failed' : 'bc-badge-pending';
+    const mediaHtml = b.mediaFilename
+      ? (b.mediaMime?.startsWith('video/')
+          ? `<div class="bc-video-icon">🎬</div>`
+          : `<img class="bc-thumb" src="/broadcast-media/${esc(b.mediaFilename)}" onclick="window.open(this.src,'_blank')" alt="media">`)
+      : '<span class="text-muted fz12">—</span>';
+    return `<tr class="bc-hist-item">
+      <td><span class="${badgeCls}">${STATUS_BC[b.status]||b.status}</span></td>
+      <td class="fz13 fw5">${chName}</td>
+      <td class="fz13 text-muted2" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.pesan)}">${esc((b.pesan||'').substring(0,60))}${(b.pesan||'').length>60?'…':''}</td>
+      <td>${mediaHtml}</td>
+      <td class="fz12 text-muted2">${fmtDate(b.createdAt)}</td>
+    </tr>`;
+  }).join('') :
+  `<tr><td colspan="5" class="empty-row">Belum ada riwayat broadcast</td></tr>`;
+
+  const bcChannelOpts = bcChannels.map(c =>
+    `<option value="${esc(c.jid)}">${esc(c.name)} (${esc(c.jid.split('@')[0])}…@${esc(c.jid.split('@')[1]||'')})</option>`
+  ).join('');
 
   return `<!DOCTYPE html>
 <html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -434,6 +473,46 @@ textarea.kg-input{resize:vertical;min-height:72px}
 .kg-del-btn:hover{background:rgba(255,77,109,.18)}
 .kg-empty{text-align:center;padding:48px 24px;color:var(--muted);font-size:13px}
 .kg-empty .ico{font-size:36px;margin-bottom:10px}
+/* ── Broadcast ── */
+.bc-compose{background:var(--card);border:1px solid var(--border);border-radius:15px;padding:24px;margin-bottom:18px}
+.bc-compose-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--cyan);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.bc-label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.bc-select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color .2s;margin-bottom:12px}
+.bc-select:focus{border-color:var(--cyan2)}
+.bc-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;min-height:100px;outline:none;transition:border-color .2s}
+.bc-textarea:focus{border-color:var(--cyan2)}
+.bc-media-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.bc-file-label{display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--bg3);border:1px dashed var(--border2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);transition:all .2s}
+.bc-file-label:hover{border-color:var(--cyan2);color:var(--cyan)}
+.bc-preview-wrap{position:relative;display:none}
+.bc-preview-img{max-height:120px;max-width:200px;border-radius:8px;border:1px solid var(--border2);display:block}
+.bc-preview-video{max-height:120px;max-width:200px;border-radius:8px;border:1px solid var(--border2);display:block}
+.bc-remove-media{position:absolute;top:-7px;right:-7px;background:var(--red);border:none;border-radius:50%;width:20px;height:20px;color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.bc-send-btn{width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;border-radius:9px;color:#fff;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-top:14px;transition:opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.bc-send-btn:hover{opacity:.88}
+.bc-send-btn:disabled{opacity:.45;cursor:not-allowed}
+.bc-status{margin-top:10px;font-size:12px;text-align:center;border-radius:8px;padding:9px;display:none}
+.bc-status.ok{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);color:#a78bfa;display:block}
+.bc-status.err{background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.25);color:#ff8fa3;display:block}
+.bc-channel-box{background:rgba(167,139,250,.04);border:1px solid rgba(167,139,250,.15);border-radius:12px;padding:20px 22px;margin-bottom:16px}
+.bc-channel-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:12px}
+.bc-add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bc-ch-input{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;flex:1;min-width:160px;transition:border-color .2s}
+.bc-ch-input:focus{border-color:#a78bfa}
+.bc-add-ch-btn{background:linear-gradient(135deg,rgba(167,139,250,.2),rgba(167,139,250,.1));border:1px solid rgba(167,139,250,.35);border-radius:8px;padding:9px 16px;color:#a78bfa;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
+.bc-add-ch-btn:hover{background:rgba(167,139,250,.25)}
+.bc-ch-status{font-size:12px;margin-top:8px;border-radius:7px;padding:7px 12px;display:none}
+.bc-ch-status.ok{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);color:#a78bfa;display:block}
+.bc-ch-status.err{background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.25);color:#ff8fa3;display:block}
+.del-ch-btn{background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);border-radius:6px;color:#ff8fa3;font-size:11px;padding:4px 10px;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif}
+.del-ch-btn:hover{background:rgba(255,77,109,.2)}
+.bc-hist-item{border-bottom:1px solid rgba(26,51,86,.5)}
+.bc-hist-item:last-child{border-bottom:none}
+.bc-badge-sent{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.25)}
+.bc-badge-pending{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+.bc-badge-failed{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(255,77,109,.1);color:#ff8fa3;border:1px solid rgba(255,77,109,.2)}
+.bc-thumb{width:48px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);cursor:pointer}
+.bc-video-icon{width:48px;height:40px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px}
 </style></head><body>
 
 <div class="sb">
@@ -449,6 +528,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
     <div class="nav-sec">Manajemen</div>
     <div class="ni" onclick="showSec('livechat',this)"><span class="ic">💬</span> LiveChat <span id="lc-unread-badge" style="display:none;margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px"></span></div>
     <div class="ni" onclick="showSec('kegiatan',this)"><span class="ic">🎪</span> Kegiatan</div>
+    <div class="ni" onclick="showSec('broadcast',this)"><span class="ic">📢</span> Broadcast</div>
     <div class="ni" onclick="showSec('grup',this)"><span class="ic">📡</span> Grup WhatsApp</div>
     <div class="nav-sec">Info</div>
     <div class="ni" onclick="showSec('panduan',this)"><span class="ic">📖</span> Panduan</div>
@@ -602,6 +682,87 @@ textarea.kg-input{resize:vertical;min-height:72px}
       </div>
     </div>
 
+    <div class="sec" id="sec-broadcast">
+      <div class="sec-title">Broadcast Saluran</div>
+      <div class="sec-sub">Kirim pesan, foto, atau video ke saluran WhatsApp (Newsletter/Channel)</div>
+
+      <!-- ─ Compose Broadcast ─ -->
+      <div class="bc-compose">
+        <div class="bc-compose-title">📣 Buat Broadcast Baru</div>
+        <div style="margin-bottom:12px">
+          <label class="bc-label">Pilih Saluran Tujuan *</label>
+          <select class="bc-select" id="bc-target">
+            <option value="">— Pilih saluran —</option>
+            ${bcChannelOpts}
+          </select>
+        </div>
+        <div style="margin-bottom:4px">
+          <label class="bc-label">Pesan (teks)</label>
+          <textarea class="bc-textarea" id="bc-pesan" placeholder="Tulis isi broadcast di sini..."></textarea>
+        </div>
+        <div class="bc-media-row">
+          <label class="bc-file-label" for="bc-media-input" id="bc-media-label">
+            📎 Lampirkan Foto / Video (opsional)
+            <input type="file" id="bc-media-input" accept="image/*,video/*" style="display:none" onchange="onBcMediaChange(this)">
+          </label>
+          <div class="bc-preview-wrap" id="bc-preview-wrap">
+            <img class="bc-preview-img" id="bc-preview-img" alt="Preview" style="display:none">
+            <video class="bc-preview-video" id="bc-preview-video" muted playsinline style="display:none"></video>
+            <button class="bc-remove-media" onclick="removeBcMedia()" title="Hapus media">✕</button>
+          </div>
+        </div>
+        <button class="bc-send-btn" id="bc-send-btn" onclick="sendBroadcast()">
+          📢 Kirim Broadcast
+        </button>
+        <div class="bc-status" id="bc-status"></div>
+      </div>
+
+      <!-- ─ Saluran Management ─ -->
+      <div class="bc-channel-box">
+        <div class="bc-channel-title">➕ Daftarkan Saluran WhatsApp</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+          Masukkan JID saluran/newsletter WhatsApp. Format:
+          <code style="color:#a78bfa;background:var(--bg3);padding:1px 6px;border-radius:4px">120363xxxxxxxxxx@newsletter</code>
+          atau grup biasa <code style="color:#a78bfa;background:var(--bg3);padding:1px 6px;border-radius:4px">1206xxxxxxxxxx@g.us</code>
+        </div>
+        <div class="bc-add-row">
+          <input class="bc-ch-input" id="bc-jid-input" placeholder="120363xxxxxxxxxx@newsletter" type="text">
+          <input class="bc-ch-input" id="bc-name-input" placeholder="Nama Saluran" type="text" style="max-width:200px">
+          <button class="bc-add-ch-btn" onclick="addBcChannel()">➕ Tambah</button>
+        </div>
+        <div id="bc-ch-status" class="bc-ch-status"></div>
+      </div>
+
+      <!-- ─ Daftar Saluran ─ -->
+      <div class="tc" style="margin-bottom:16px">
+        <div class="tc-head">
+          <div class="tc-head-l">
+            <span class="tc-name">Daftar Saluran</span>
+            <span class="cnt-badge" id="bc-ch-count">${bcChannels.length} saluran</span>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Nama</th><th>JID</th><th>Terdaftar</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody id="bc-ch-tbody">${bcChannelRows}</tbody>
+        </table></div>
+      </div>
+
+      <!-- ─ Riwayat Broadcast ─ -->
+      <div class="tc">
+        <div class="tc-head">
+          <div class="tc-head-l">
+            <span class="tc-name">Riwayat Broadcast</span>
+            <span class="cnt-badge" id="bc-hist-count">${bcHistory.length} broadcast</span>
+          </div>
+          <button class="ref-btn" onclick="refreshBcHistory()">🔄 Refresh</button>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Status</th><th>Saluran</th><th>Pesan</th><th>Media</th><th>Waktu</th></tr></thead>
+          <tbody id="bc-hist-tbody">${bcHistRows}</tbody>
+        </table></div>
+      </div>
+    </div>
+
     <div class="sec" id="sec-panduan">
       <div class="sec-title">Panduan Sistem</div>
       <div class="sec-sub">Informasi lengkap pengoperasian Hallo Johor Bot</div>
@@ -662,8 +823,8 @@ textarea.kg-input{resize:vertical;min-height:72px}
 </div>
 
 <script>
-const sections=['overview','laporan','grup','livechat','kegiatan','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',panduan:'Panduan'};
+const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',panduan:'Panduan'};
 function showSec(id,el){
   sections.forEach(s=>document.getElementById('sec-'+s).classList.toggle('on',s===id));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
@@ -1397,6 +1558,192 @@ async function saveRouting() {
     status.className = 'routing-status err';
   }
 }
+
+// ══════════════════════════════════════════════
+//   BROADCAST SALURAN
+// ══════════════════════════════════════════════
+let bcMediaFile = null;
+
+function onBcMediaChange(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  bcMediaFile = file;
+  const wrap = document.getElementById('bc-preview-wrap');
+  const img  = document.getElementById('bc-preview-img');
+  const vid  = document.getElementById('bc-preview-video');
+  wrap.style.display = 'block';
+  const url = URL.createObjectURL(file);
+  if (file.type.startsWith('video/')) {
+    img.style.display = 'none';
+    vid.style.display = 'block';
+    vid.src = url;
+  } else {
+    vid.style.display = 'none';
+    img.style.display = 'block';
+    img.src = url;
+  }
+  document.getElementById('bc-media-label').childNodes[0].textContent = '✅ ' + file.name;
+}
+
+function removeBcMedia() {
+  bcMediaFile = null;
+  document.getElementById('bc-media-input').value = '';
+  document.getElementById('bc-preview-wrap').style.display = 'none';
+  document.getElementById('bc-preview-img').src = '';
+  document.getElementById('bc-preview-video').src = '';
+  document.getElementById('bc-media-label').childNodes[0].textContent = '📎 Lampirkan Foto / Video (opsional)';
+}
+
+async function sendBroadcast() {
+  const target  = document.getElementById('bc-target').value.trim();
+  const pesan   = document.getElementById('bc-pesan').value.trim();
+  const statusEl= document.getElementById('bc-status');
+  const btn     = document.getElementById('bc-send-btn');
+
+  if (!target) {
+    statusEl.textContent = '⚠️ Pilih saluran tujuan terlebih dahulu.';
+    statusEl.className = 'bc-status err';
+    return;
+  }
+  if (!pesan && !bcMediaFile) {
+    statusEl.textContent = '⚠️ Isi pesan atau lampirkan media terlebih dahulu.';
+    statusEl.className = 'bc-status err';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Mengirim...';
+  statusEl.className = 'bc-status';
+  statusEl.style.display = 'none';
+
+  let media_base64 = null, media_mime = null, media_filename = null;
+  if (bcMediaFile) {
+    media_base64 = await new Promise(resolve => {
+      const r = new FileReader();
+      r.onload = e => resolve(e.target.result.split(',')[1]);
+      r.readAsDataURL(bcMediaFile);
+    });
+    media_mime = bcMediaFile.type;
+    media_filename = bcMediaFile.name;
+  }
+
+  try {
+    const res = await fetch('/api/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelJid: target, pesan, media_base64, media_mime, media_filename })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      statusEl.textContent = '✅ Broadcast diantrekan! Bot akan mengirim dalam beberapa detik.';
+      statusEl.className = 'bc-status ok';
+      document.getElementById('bc-pesan').value = '';
+      removeBcMedia();
+      setTimeout(() => refreshBcHistory(), 3500);
+    } else {
+      throw new Error(json.error || 'Gagal');
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ Gagal: ' + e.message;
+    statusEl.className = 'bc-status err';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '📢 Kirim Broadcast';
+  }
+}
+
+async function addBcChannel() {
+  const jidInput  = document.getElementById('bc-jid-input');
+  const nameInput = document.getElementById('bc-name-input');
+  const statusEl  = document.getElementById('bc-ch-status');
+  const jid  = jidInput.value.trim();
+  const name = nameInput.value.trim();
+
+  if (!jid) { jidInput.focus(); return; }
+  if (!jid.includes('@')) {
+    statusEl.textContent = '⚠️ JID harus mengandung @newsletter atau @g.us';
+    statusEl.className = 'bc-ch-status err';
+    return;
+  }
+  statusEl.className = 'bc-ch-status';
+  statusEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/broadcast/channel/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jid, name: name || jid })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      statusEl.textContent = '✅ Saluran berhasil ditambahkan! Halaman akan direfresh...';
+      statusEl.className = 'bc-ch-status ok';
+      jidInput.value = ''; nameInput.value = '';
+      setTimeout(() => location.reload(), 1400);
+    } else {
+      statusEl.textContent = '❌ ' + (json.error || 'Gagal');
+      statusEl.className = 'bc-ch-status err';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ Error: ' + e.message;
+    statusEl.className = 'bc-ch-status err';
+  }
+}
+
+async function deleteBcChannel(jid, name) {
+  if (!confirm('Hapus saluran "' + name + '"?')) return;
+  try {
+    const res = await fetch('/api/broadcast/channel/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jid })
+    });
+    const json = await res.json();
+    if (json.ok) location.reload();
+    else alert('Gagal: ' + (json.error || ''));
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function refreshBcHistory() {
+  try {
+    const res  = await fetch('/api/broadcast/history');
+    const json = await res.json();
+    if (!json.ok) return;
+    const history  = json.history;
+    const channels = json.channels;
+    const STATUS_BC = { sent: '✅ Terkirim', pending: '⏳ Mengantre', failed: '❌ Gagal' };
+    const fmtD = (iso) => { try { return new Date(iso).toLocaleString('id-ID',{timeZone:'Asia/Jakarta',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch { return iso||'-'; } };
+
+    const rows = history.length ? history.map(b => {
+      const ch = channels.find(c => c.jid === b.channelJid);
+      const chName = ch ? ch.name : (b.channelJid || '-');
+      const badgeCls = b.status==='sent' ? 'bc-badge-sent' : b.status==='failed' ? 'bc-badge-failed' : 'bc-badge-pending';
+      const mediaHtml = b.mediaFilename
+        ? (b.mediaMime?.startsWith('video/')
+            ? '<div class="bc-video-icon">🎬</div>'
+            : '<img class="bc-thumb" src="/broadcast-media/' + esc(b.mediaFilename) + '" onclick="window.open(this.src,\'_blank\')" alt="media">')
+        : '<span class="text-muted fz12">—</span>';
+      return '<tr class="bc-hist-item">'
+        + '<td><span class="' + badgeCls + '">' + (STATUS_BC[b.status]||b.status) + '</span></td>'
+        + '<td class="fz13 fw5">' + esc(chName) + '</td>'
+        + '<td class="fz13 text-muted2" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc((b.pesan||'').substring(0,60)) + ((b.pesan||'').length>60?'…':'') + '</td>'
+        + '<td>' + mediaHtml + '</td>'
+        + '<td class="fz12 text-muted2">' + fmtD(b.createdAt) + '</td>'
+        + '</tr>';
+    }).join('') : '<tr><td colspan="5" class="empty-row">Belum ada riwayat broadcast</td></tr>';
+
+    document.getElementById('bc-hist-tbody').innerHTML = rows;
+    document.getElementById('bc-hist-count').textContent = history.length + ' broadcast';
+
+    const opts = channels.map(c =>
+      '<option value="' + esc(c.jid) + '">' + esc(c.name) + ' (' + c.jid.split('@')[0] + '…@' + (c.jid.split('@')[1]||'') + ')</option>'
+    ).join('');
+    const sel = document.getElementById('bc-target');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Pilih saluran —</option>' + opts;
+    sel.value = cur;
+  } catch(e) { console.error('refreshBcHistory error:', e); }
+}
 <\/script></body></html>`;
 };
 
@@ -1506,7 +1853,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan()));
+  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30)));
   if (path_ === '/api/laporan') return send(200, JSON.stringify(getLaporan()), 'application/json');
 
   // ── API: Tambah Grup ──
@@ -2030,6 +2377,92 @@ function copyIt() {
     const fileBuffer = fs.readFileSync(fotoFile);
     res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' });
     return res.end(fileBuffer);
+  }
+
+  // ── Serve broadcast media ──
+  if (path_.startsWith('/broadcast-media/')) {
+    const filename = path_.replace('/broadcast-media/', '').replace(/[^a-zA-Z0-9._-]/g, '');
+    if (!filename) return send(400, 'Bad Request', 'text/plain');
+    const mediaFile = path.join(BROADCAST_MEDIA_DIR, filename);
+    if (!fs.existsSync(mediaFile)) return send(404, 'Media tidak ditemukan', 'text/plain');
+    const ext = filename.split('.').pop().toLowerCase();
+    const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp', gif:'image/gif', mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm' };
+    const mediaMime = mimeMap[ext] || 'application/octet-stream';
+    const fileBuffer = fs.readFileSync(mediaFile);
+    res.writeHead(200, { 'Content-Type': mediaMime, 'Cache-Control': 'public, max-age=86400' });
+    return res.end(fileBuffer);
+  }
+
+  // ── API: Broadcast – Kirim ──
+  if (path_ === '/api/broadcast' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const { channelJid, pesan, media_base64, media_mime, media_filename } = body;
+
+      if (!channelJid) return send(400, JSON.stringify({ ok: false, error: 'channelJid diperlukan' }), 'application/json');
+      if (!pesan?.trim() && !media_base64) return send(400, JSON.stringify({ ok: false, error: 'Pesan atau media diperlukan' }), 'application/json');
+
+      let mediaFilename = null;
+      if (media_base64) {
+        const ext = (media_mime || 'image/jpeg').split('/')[1]?.replace('quicktime', 'mov') || 'jpg';
+        const safeExt = ext.replace(/[^a-z0-9]/gi, '').substring(0, 8);
+        mediaFilename = `bc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${safeExt}`;
+        const mediaPath = path.join(BROADCAST_MEDIA_DIR, mediaFilename);
+        fs.writeFileSync(mediaPath, Buffer.from(media_base64, 'base64'));
+      }
+
+      const entry = queueBroadcast({
+        channelJid,
+        pesan: (pesan || '').trim(),
+        mediaFilename,
+        mediaMime: media_mime || null,
+      });
+
+      return send(200, JSON.stringify({ ok: true, id: entry.id }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Broadcast – Tambah Saluran ──
+  if (path_ === '/api/broadcast/channel/add' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const { jid, name } = body;
+      if (!jid || !jid.includes('@')) return send(400, JSON.stringify({ ok: false, error: 'JID tidak valid' }), 'application/json');
+      const added = addBroadcastChannel(jid, name || jid);
+      if (!added) return send(200, JSON.stringify({ ok: false, error: 'Saluran sudah terdaftar' }), 'application/json');
+      return send(200, JSON.stringify({ ok: true }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Broadcast – Hapus Saluran ──
+  if (path_ === '/api/broadcast/channel/delete' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const { jid } = body;
+      if (!jid) return send(400, JSON.stringify({ ok: false, error: 'jid diperlukan' }), 'application/json');
+      const removed = removeBroadcastChannel(jid);
+      if (!removed) return send(404, JSON.stringify({ ok: false, error: 'Saluran tidak ditemukan' }), 'application/json');
+      return send(200, JSON.stringify({ ok: true }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Broadcast – History & Channels (untuk refresh) ──
+  if (path_ === '/api/broadcast/history' && req.method === 'GET') {
+    try {
+      return send(200, JSON.stringify({
+        ok: true,
+        history: getBroadcastHistory(30),
+        channels: getBroadcastChannels(),
+      }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
   }
 
   return send(404, '404 Not Found', 'text/plain');

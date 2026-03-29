@@ -442,3 +442,76 @@ export const deleteLaporan = (id) => {
   }
   return false;
 };
+
+// ══════════════════════════════════════════════════════════
+//   BROADCAST SALURAN — Queue & Channel Management
+// ══════════════════════════════════════════════════════════
+
+// ── Saluran (Channel) Registry ────────────────────────────
+export const getBroadcastChannels = () => {
+  const data = readJSON('broadcast_channels.json');
+  return data.channels || [];
+};
+
+export const addBroadcastChannel = (channelJid, channelName) => {
+  const data = readJSON('broadcast_channels.json');
+  if (!data.channels) data.channels = [];
+  if (data.channels.find(c => c.jid === channelJid)) return false;
+  data.channels.push({
+    jid: channelJid,
+    name: channelName || channelJid,
+    addedAt: new Date().toISOString(),
+  });
+  writeJSON('broadcast_channels.json', data);
+  return true;
+};
+
+export const removeBroadcastChannel = (channelJid) => {
+  const data = readJSON('broadcast_channels.json');
+  if (!data.channels) return false;
+  const before = data.channels.length;
+  data.channels = data.channels.filter(c => c.jid !== channelJid);
+  writeJSON('broadcast_channels.json', data);
+  return data.channels.length < before;
+};
+
+// ── Broadcast Queue ───────────────────────────────────────
+export const queueBroadcast = (item) => {
+  const data = readJSON('broadcast_queue.json');
+  if (!data.queue) data.queue = [];
+  const entry = {
+    id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    sentAt: null,
+    error: null,
+    ...item,
+  };
+  data.queue.push(entry);
+  writeJSON('broadcast_queue.json', data);
+  return entry;
+};
+
+export const getPendingBroadcasts = () => {
+  const data = readJSON('broadcast_queue.json');
+  return (data.queue || []).filter(b => b.status === 'pending');
+};
+
+export const markBroadcastDone = (id, status = 'sent', error = null) => {
+  const data = readJSON('broadcast_queue.json');
+  if (!data.queue) return;
+  const item = data.queue.find(b => b.id === id);
+  if (item) {
+    item.status = status;
+    item.sentAt = new Date().toISOString();
+    if (error) item.error = error;
+    writeJSON('broadcast_queue.json', data);
+  }
+};
+
+export const getBroadcastHistory = (limit = 30) => {
+  const data = readJSON('broadcast_queue.json');
+  return (data.queue || [])
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
+};

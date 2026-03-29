@@ -290,16 +290,14 @@ export const handleMessage = async (sock, msg) => {
       break;
     }
 
-    // ── Persyaratan Surat (A–S) ──────────────────────────
+    // ── Persyaratan Surat (A–G, H, J–N, S — tanpa I & O–R) ──
     case 'A': case 'a': case 'B': case 'b':
     case 'C': case 'c': case 'D': case 'd':
     case 'E': case 'e': case 'F': case 'f':
     case 'G': case 'g': case 'H': case 'h':
-    case 'I': case 'i': case 'J': case 'j':
+    case 'J': case 'j':
     case 'K': case 'k': case 'L': case 'l':
     case 'M': case 'm': case 'N': case 'n':
-    case 'O': case 'o': case 'P': case 'p':
-    case 'Q': case 'q': case 'R': case 'r':
     case 'S': case 's': {
       const key = textMsg.toUpperCase();
       if (PERSYARATAN[key]) {
@@ -339,7 +337,7 @@ const handleLaporanFlow = async (sock, jid, name, msg, session, { textMsg, image
       const kategori = KATEGORI_PENGADUAN.find(k => k.id === textMsg);
       if (!kategori) {
         await sendText(sock, jid,
-          `⚠️ Pilihan tidak valid. Silakan ketik angka *1-7* sesuai kategori.\n\nAtau ketik *0* untuk batal.`
+          `⚠️ Pilihan tidak valid. Silakan ketik angka *1-${KATEGORI_PENGADUAN.length}* sesuai kategori.\n\nAtau ketik *0* untuk batal.`
         );
         return;
       }

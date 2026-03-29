@@ -62,25 +62,18 @@ export const MENU_PERSYARATAN = `📋 *INFORMASI PERSYARATAN SURAT*
 *G* — Surat Ket. Pindah Masuk
 
 📝 *LAYANAN SURAT KETERANGAN:*
-*H* — Surat Keterangan Ahli Waris
-*I* — Surat Kurang Mampu
+*H* — Surat Pernyataan Ahli Waris
 *J* — Surat Domisili Diri
 *K* — Surat Domisili Usaha
 *L* — Surat Pengantar Nikah
 *M* — Surat Keterangan Kematian
 *N* — Rekomendasi Akte Kelahiran
 
-🏡 *LAYANAN PERTANAHAN:*
-*O* — Surat Keterangan Tanah
-*P* — Surat Tanah Hilang
-*Q* — Surat Pelepasan Tanah (Ganti Rugi)
-*R* — Surat Tidak Silang Sengketa
-
 📁 *LAYANAN LAINNYA:*
 *S* — Legalisasi Surat/Dokumen
 
 ━━━━━━━━━━━━━━━━━━━━━━━
-💡 Ketik *huruf kode* (A-S) untuk melihat persyaratan
+💡 Ketik *huruf kode* sesuai daftar di atas (A–G, H, J–N, S)
 Atau ketik *0* untuk kembali ke menu`;
 
 // ─── Footer standar persyaratan ───────────────────────────
@@ -189,7 +182,7 @@ Lengkapi seluruh dokumen berikut:
 ${FOOTER_PERSYARATAN}`,
 
   // ── H: Ahli Waris ──────────────────────────────────────
-  H: `📄 *SURAT KETERANGAN AHLI WARIS*
+  H: `📄 *SURAT PERNYATAAN AHLI WARIS*
 ━━━━━━━━━━━━━━━━━━━━━━━
 ⏱️ Waktu: *3 hari kerja* | 💰 Tarif: *Gratis*
 
@@ -213,18 +206,6 @@ Lengkapi seluruh dokumen berikut:
 1️⃣6️⃣ Surat Pernyataan bersama para ahli waris
 1️⃣7️⃣ Surat Pernyataan Keabsahan Penandatanganan Pernyataan Ahli Waris
 1️⃣8️⃣ Surat Pernyataan Kebenaran Pemeriksaan Para Ahli Waris dari Lurah
-${FOOTER_PERSYARATAN}`,
-
-  // ── I: Kurang Mampu ────────────────────────────────────
-  I: `📄 *SURAT KETERANGAN KURANG MAMPU*
-━━━━━━━━━━━━━━━━━━━━━━━
-⏱️ Waktu: *10 menit* | 💰 Tarif: *Gratis*
-
-Lengkapi seluruh dokumen berikut:
-
-1️⃣  Surat Pernyataan yang bersangkutan _(diketahui Kepling)_
-2️⃣  Fotokopi KTP
-3️⃣  Fotokopi Kartu Keluarga (KK)
 ${FOOTER_PERSYARATAN}`,
 
   // ── J: Domisili Diri ───────────────────────────────────
@@ -293,65 +274,6 @@ Lengkapi seluruh dokumen berikut:
 3️⃣  Fotokopi KTP Orangtua
 4️⃣  Fotokopi KK Orangtua
 5️⃣  Fotokopi KTP 2 orang Saksi
-${FOOTER_PERSYARATAN}`,
-
-  // ── O: Surat Keterangan Tanah ──────────────────────────
-  O: `🏡 *PELAYANAN PEMBUATAN SURAT KETERANGAN TANAH*
-━━━━━━━━━━━━━━━━━━━━━━━
-⏱️ Waktu: *3 hari kerja* | 💰 Tarif: *Gratis*
-
-Lengkapi seluruh dokumen berikut:
-
-1️⃣  Fotocopi KK & KTP Pemohon
-2️⃣  Fotocopi KTP 2 orang Saksi
-3️⃣  Surat Keterangan Tanah Asli yang Lama
-4️⃣  1 Set Surat Keterangan Tanah yang ditandatangani Lurah
-5️⃣  Surat Pernyataan yang bersangkutan, ditandatangani saksi-saksi, jiran/tetangga, diketahui Lurah _(materai 10.000)_
-6️⃣  Berita Acara Pengukuran Tanah yang diketahui saksi-saksi, jiran/tetangga kanan kiri, diketahui Lurah
-7️⃣  Surat Permohonan untuk memperoleh Surat Keterangan Tanah, ditandatangani yang bersangkutan _(di atas materai 10.000)_
-${FOOTER_PERSYARATAN}`,
-
-  // ── P: Surat Tanah Hilang ──────────────────────────────
-  P: `🏡 *PELAYANAN PEMBUATAN SURAT TANAH YANG HILANG*
-━━━━━━━━━━━━━━━━━━━━━━━
-⏱️ Waktu: *3 hari kerja* | 💰 Tarif: *Gratis*
-
-Lengkapi seluruh dokumen berikut:
-
-1️⃣  Fotocopi KK & KTP Pemohon
-2️⃣  Surat Keterangan Tanah Yang Lama
-3️⃣  1 Set Surat Keterangan Tanah yang Ditandatangani Lurah
-4️⃣  Surat Pernyataan yang bersangkutan, ditandatangani saksi-saksi, jiran/tetangga, diketahui Lurah _(materai 10.000)_
-5️⃣  Berita Acara Pengukuran Tanah yang diketahui saksi-saksi, jiran/tetangga kanan kiri, diketahui Lurah
-6️⃣  Surat Permohonan untuk memperoleh Surat Keterangan Tanah, ditandatangani yang bersangkutan _(di atas materai 10.000)_
-7️⃣  Surat Keterangan Hilang dari Kepolisian
-8️⃣  Pengumuman selama 1 minggu berturut-turut di 2 (dua) Koran
-${FOOTER_PERSYARATAN}`,
-
-  // ── Q: Surat Pelepasan Tanah Ganti Rugi ────────────────
-  Q: `🏡 *PELAYANAN SURAT PELEPASAN PENGUASAAN TANAH (GANTI RUGI)*
-━━━━━━━━━━━━━━━━━━━━━━━
-⏱️ Waktu: *3 hari kerja* | 💰 Tarif: *Gratis*
-
-Lengkapi seluruh dokumen berikut:
-
-1️⃣  Fotocopy KTP & KK Penjual dan Pembeli
-2️⃣  Surat Keterangan Ahli Waris dan Kuasa Ahli Waris
-3️⃣  1 Set Surat Keterangan Tanah yang Ditandatangani Lurah
-4️⃣  Surat Pernyataan yang bersangkutan, ditandatangani saksi-saksi, jiran/tetangga, diketahui Lurah _(materai 10.000)_
-5️⃣  Berita Acara Pengukuran Tanah yang diketahui saksi-saksi, jiran/tetangga kanan kiri, diketahui Lurah
-${FOOTER_PERSYARATAN}`,
-
-  // ── R: Surat Tidak Silang Sengketa ────────────────────
-  R: `🏡 *PELAYANAN SURAT TIDAK SILANG SENGKETA*
-━━━━━━━━━━━━━━━━━━━━━━━
-⏱️ Waktu: *3 hari kerja* | 💰 Tarif: *Gratis*
-
-Lengkapi seluruh dokumen berikut:
-
-1️⃣  Fotocopi KK & KTP Pemilik
-2️⃣  Surat Pernyataan Tidak Keberatan dari Jiran/Tetangga (kiri, kanan, depan & belakang) — Asli dan Fotocopy Surat Tanah
-3️⃣  Surat Tidak Silang Sengketa yang sudah ditandatangani Lurah
 ${FOOTER_PERSYARATAN}`,
 
   // ── S: Legalisasi Surat/Dokumen ────────────────────────
@@ -727,7 +649,8 @@ export const KATEGORI_PENGADUAN = [
   { id: '4', label: 'Drainase Tersumbat', emoji: '🌊' },
   { id: '5', label: 'Administrasi Pelayanan', emoji: '📋' },
   { id: '6', label: 'Bangunan Liar', emoji: '🏚️' },
-  { id: '7', label: 'Lainnya', emoji: '📌' },
+  { id: '7', label: 'Orang Terlantar / ODGJ', emoji: '🫂' },
+  { id: '8', label: 'Lainnya', emoji: '📌' },
 ];
 
 export const KELURAHAN_LIST = [
@@ -747,7 +670,7 @@ export const buildKategoriMenu = () => {
     text += `${k.emoji} *${k.id}* — ${k.label}\n`;
   }
   text += `\n━━━━━━━━━━━━━━━━━━━━━━━\n`;
-  text += `Ketik *angka* kategori (1-7)\nAtau ketik *0* untuk batal`;
+  text += `Ketik *angka* kategori (1-${KATEGORI_PENGADUAN.length})\nAtau ketik *0* untuk batal`;
   return text;
 };
 

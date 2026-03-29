@@ -19,7 +19,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { handleMessage } from './handler.js';
-import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone } from './store.js';
+import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent } from './store.js';
+import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp } from './bmkg-cuaca.js';
 import logger from './logger.js';
 
 // ─── Configuration ────────────────────────────────────────
@@ -340,6 +341,51 @@ function startBroadcastWorker(sock) {
   logger.info('BROADCAST', '📢 Broadcast worker aktif (poll setiap 5 detik)');
 }
 
+function wibTimeParts() {
+  const parts = {};
+  for (const { type, value } of new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())) {
+    if (type !== 'literal') parts[type] = value;
+  }
+  return parts;
+}
+
+/** Antrian teks prakiraan BMKG setiap hari ±00:00 WIB (jendela menit ke-0–12, cek tiap ~40 dtk). */
+function startWeatherScheduler() {
+  let busy = false;
+  setInterval(async () => {
+    if (busy) return;
+    const cfg = getWeatherBroadcastConfig();
+    if (!cfg.enabled || !cfg.channelJid) return;
+    const p = wibTimeParts();
+    const ymd = `${p.year}-${p.month}-${p.day}`;
+    if (cfg.lastSentDate === ymd) return;
+    const h = parseInt(p.hour, 10);
+    const m = parseInt(p.minute, 10);
+    if (h !== 0 || m > 12) return;
+    busy = true;
+    try {
+      const data = await scrapeMedanJohorCuacaHariIni();
+      const pesan = formatCuacaWhatsApp(data);
+      queueBroadcast({ channelJid: cfg.channelJid, pesan: pesan.trim() });
+      markWeatherBroadcastSent(ymd);
+      logger.success('CUACA', `Jadwal 00:00 WIB: prakiraan BMKG diantrekan → ${cfg.channelJid}`);
+    } catch (err) {
+      logger.warn('CUACA', 'Gagal jadwal BMKG (akan dicoba lagi dalam jendela 00:00)', err.message);
+    } finally {
+      busy = false;
+    }
+  }, 40_000);
+  logger.info('CUACA', '⏰ Penjadwal prakiraan BMKG aktif (00:00 WIB, jika diaktifkan di dashboard)');
+}
+
 // ─── Start Bot ───────────────────────────────────────────
 async function startBot() {
   logger.banner();
@@ -552,6 +598,7 @@ process.on('SIGTERM', () => {
 });
 
 // ─── Run ──────────────────────────────────────────────────
+startWeatherScheduler();
 startBot().catch(err => {
   logger.error('BOOT', 'Gagal menjalankan bot', err.message);
   console.error(err);

@@ -10,7 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig } from './store.js';
+import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
 
@@ -149,7 +150,7 @@ input:focus{border-color:#0090c8;box-shadow:0 0 0 3px rgba(0,200,255,.1)}
   <p class="foot">Kecamatan Medan Johor — Sistem Pengaduan Digital</p>
 </div></body></html>`;
 
-const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = []) => {
+const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}) => {
   const total = laporan.length;
   const now = new Date();
   const today = laporan.filter(l => new Date(l.tanggal).toDateString() === now.toDateString()).length;
@@ -281,6 +282,12 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
   const bcChannelOpts = bcChannels.map(c =>
     `<option value="${esc(c.jid)}">${esc(c.name)} (${esc(c.jid.split('@')[0])}…@${esc(c.jid.split('@')[1]||'')})</option>`
   ).join('');
+  const cuacaChSel = (weatherSchedule.channelJid || '').trim();
+  const cuacaChannelOpts = bcChannels.length
+    ? bcChannels.map(c =>
+        `<option value="${esc(c.jid)}"${cuacaChSel === c.jid ? ' selected' : ''}>${esc(c.name)} (${esc(c.jid.split('@')[0])}…)</option>`
+      ).join('')
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -748,6 +755,33 @@ textarea.kg-input{resize:vertical;min-height:72px}
         </div>
         <div id="medan-berita-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
         <div id="medan-berita-preview" style="font-size:12px;color:var(--text2)">Klik <b>Muat pratinjau</b> untuk melihat cuplikan berita terbaru (teks + gambar).</div>
+      </div>
+
+      <div class="bc-channel-box" style="border-color:rgba(0,200,255,.25)">
+        <div class="bc-channel-title">🌤️ Prakiraan Cuaca — BMKG (Medan Johor)</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.75">
+          Sumber: <a href="${BMKG_MEDAN_JOHOR_URL}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">BMKG — 6 kelurahan Kec. Medan Johor</a>.
+          Data <b>satu hari</b> (kolom &quot;hari ini&quot; di tabel BMKG). Aktifkan jadwal untuk mengantre broadcast teks otomatis setiap hari sekitar <b>00:00 WIB</b> (jendela menit pertama).
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+          <label class="bc-label" style="margin:0">Saluran cuaca:</label>
+          <select class="bc-select" id="cuaca-bc-target" style="min-width:220px;flex:1">
+            <option value="">— Pilih saluran —</option>
+            ${cuacaChannelOpts}
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin-bottom:12px;cursor:pointer">
+          <input type="checkbox" id="cuaca-auto-enabled" ${weatherSchedule.enabled ? 'checked' : ''} style="width:16px;height:16px">
+          <span>Kirim otomatis setiap hari ±00:00 WIB ke saluran di atas</span>
+        </label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">
+          <button type="button" class="ref-btn" onclick="saveCuacaSchedule()">💾 Simpan jadwal</button>
+          <button type="button" class="ref-btn" onclick="previewCuacaBmkg()">👁️ Pratinjau teks</button>
+          <button type="button" class="bc-send-btn" style="margin:0;padding:9px 18px;font-size:13px" onclick="queueCuacaBmkgSekarang()" id="cuaca-queue-btn">📤 Kirim prakiraan sekarang</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Otomatis terakhir: <span id="cuaca-last-sent">${esc(weatherSchedule.lastSentDate || '—')}</span></div>
+        <div id="cuaca-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
+        <pre id="cuaca-preview" style="display:none;white-space:pre-wrap;font-size:12px;font-family:'JetBrains Mono',monospace;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--text2);max-height:280px;overflow-y:auto;margin:0"></pre>
       </div>
 
       <!-- ─ Saluran Management ─ -->
@@ -1723,6 +1757,84 @@ async function loadMedanBeritaPreview() {
   }
 }
 
+async function saveCuacaSchedule() {
+  const st = document.getElementById('cuaca-status');
+  const enabled = document.getElementById('cuaca-auto-enabled').checked;
+  const channelJid = document.getElementById('cuaca-bc-target').value.trim();
+  if (enabled && !channelJid) {
+    st.textContent = '⚠️ Pilih saluran agar jadwal otomatis bisa jalan.';
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/cuaca-medanjohor/schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, channelJid })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal simpan');
+    st.textContent = '✅ Jadwal prakiraan cuaca disimpan.';
+    st.className = 'bc-ch-status ok';
+    st.style.display = 'block';
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+  }
+}
+
+async function previewCuacaBmkg() {
+  const st = document.getElementById('cuaca-status');
+  const pre = document.getElementById('cuaca-preview');
+  st.style.display = 'none';
+  pre.style.display = 'block';
+  pre.textContent = '⏳ Memuat data BMKG...';
+  try {
+    const res = await fetch('/api/cuaca-medanjohor/preview');
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    pre.textContent = json.text || '';
+  } catch (e) {
+    pre.textContent = 'Error: ' + e.message;
+    pre.style.display = 'block';
+  }
+}
+
+async function queueCuacaBmkgSekarang() {
+  const st = document.getElementById('cuaca-status');
+  const btn = document.getElementById('cuaca-queue-btn');
+  const channelJid = document.getElementById('cuaca-bc-target').value.trim();
+  if (!channelJid) {
+    st.textContent = '⚠️ Pilih saluran tujuan.';
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  st.style.display = 'block';
+  st.className = 'bc-ch-status ok';
+  st.textContent = '⏳ Mengambil BMKG & mengantre broadcast...';
+  try {
+    const res = await fetch('/api/cuaca-medanjohor/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelJid })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    st.textContent = '✅ ' + (json.message || 'Diantrekan.');
+    st.className = 'bc-ch-status ok';
+    setTimeout(() => refreshBcHistory(), 2500);
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function queueMedanBeritaHarian() {
   const target = document.getElementById('bc-target').value.trim();
   const st = document.getElementById('medan-berita-status');
@@ -1996,7 +2108,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30)));
+  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig()));
   if (path_ === '/api/laporan') return send(200, JSON.stringify(getLaporan()), 'application/json');
 
   // ── API: Tambah Grup ──
@@ -2647,6 +2759,51 @@ function copyIt() {
   }
 
   // ── API: Berita Pemko Medan (portal.medan.go.id/berita) ──
+  if (path_ === '/api/cuaca-medanjohor/preview' && req.method === 'GET') {
+    try {
+      const data = await scrapeMedanJohorCuacaHariIni();
+      const text = formatCuacaWhatsApp(data);
+      return send(200, JSON.stringify({ ok: true, data, text }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/cuaca-medanjohor/schedule' && req.method === 'GET') {
+    try {
+      return send(200, JSON.stringify({ ok: true, ...getWeatherBroadcastConfig() }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/cuaca-medanjohor/schedule' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      setWeatherBroadcastConfig({
+        enabled: !!body.enabled,
+        channelJid: (body.channelJid || '').trim(),
+      });
+      return send(200, JSON.stringify({ ok: true }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/cuaca-medanjohor/queue' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const channelJid = (body.channelJid || '').trim();
+      if (!channelJid) return send(400, JSON.stringify({ ok: false, error: 'channelJid diperlukan' }), 'application/json');
+      const data = await scrapeMedanJohorCuacaHariIni();
+      const pesan = formatCuacaWhatsApp(data);
+      queueBroadcast({ channelJid, pesan: pesan.trim() });
+      return send(200, JSON.stringify({ ok: true, message: 'Prakiraan cuaca diantrekan. Bot akan mengirim sebentar lagi.' }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
   if (path_ === '/api/medan-berita' && req.method === 'GET') {
     try {
       const limit = Math.min(10, Math.max(1, parseInt(url_.searchParams.get('limit') || '5', 10)));

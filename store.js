@@ -515,3 +515,30 @@ export const getBroadcastHistory = (limit = 30) => {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, limit);
 };
+
+// ── Jadwal broadcast prakiraan cuaca BMKG (00:00 WIB) ─────
+export const getWeatherBroadcastConfig = () => {
+  const d = readJSON('weather_broadcast_schedule.json');
+  return {
+    enabled: !!d.enabled,
+    channelJid: (d.channelJid || '').trim(),
+    lastSentDate: d.lastSentDate || null,
+  };
+};
+
+export const setWeatherBroadcastConfig = ({ enabled, channelJid }) => {
+  const prev = readJSON('weather_broadcast_schedule.json');
+  writeJSON('weather_broadcast_schedule.json', {
+    ...prev,
+    enabled: Boolean(enabled),
+    channelJid: (channelJid || '').trim(),
+  });
+};
+
+export const markWeatherBroadcastSent = (wibYmd) => {
+  const prev = readJSON('weather_broadcast_schedule.json');
+  writeJSON('weather_broadcast_schedule.json', {
+    ...prev,
+    lastSentDate: wibYmd,
+  });
+};

@@ -30,6 +30,7 @@ import {
   KATEGORI_PENGADUAN, KELURAHAN_LIST,
   buildKategoriMenu, buildKelurahanMenu
 } from './menu.js';
+import { scrapeMedanBeritaArticles } from './medan-berita.js';
 import logger from './logger.js';
 
 // Delay helper
@@ -244,14 +245,35 @@ export const handleMessage = async (sock, msg) => {
       logger.send(senderJid, 'Menu Wisata Medan Johor');
       break;
 
-    case '10': {
+    case '9': {
+      try {
+        const articles = await scrapeMedanBeritaArticles(5); // Get 5 latest articles
+        if (articles.length === 0) {
+          await sendText(sock, senderJid, '❌ Maaf, tidak dapat mengambil berita saat ini. Coba lagi nanti.');
+          return;
+        }
+        let newsMessage = '📰 *BERITA KECAMATAN MEDAN JOHOR*\n━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+        articles.forEach((article, index) => {
+          newsMessage += `${index + 1}. *${article.title}*\n${article.description}\n🔗 ${article.articleUrl}\n\n`;
+        });
+        newsMessage += '━━━━━━━━━━━━━━━━━━━━━━━\n💡 Sumber: medanjohor.go.id/berita\n\nKetik *0* untuk kembali ke menu';
+        await sendText(sock, senderJid, newsMessage);
+        logger.send(senderJid, 'Berita Kecamatan');
+      } catch (error) {
+        logger.error('NEWS', 'Gagal mengambil berita', error.message);
+        await sendText(sock, senderJid, '❌ Maaf, terjadi kesalahan saat mengambil berita. Coba lagi nanti.');
+      }
+      break;
+    }
+
+    case '11': {
       const statusMsg = buildStatusLaporan(senderJid);
       await sendText(sock, senderJid, statusMsg);
       logger.send(senderJid, 'Cek Status Laporan');
       break;
     }
 
-    case '9': {
+    case '10': {
       const existing = getLivechatByJid(senderJid);
       if (existing) {
         setSession(senderJid, { flow: 'livechat' });

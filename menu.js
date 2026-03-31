@@ -37,14 +37,17 @@ Halo! Saya siap membantu Anda dengan berbagai layanan administrasi kecamatan.
 8️⃣ *Wisata Medan Johor*
    › Kuliner, Hiburan & Taman, Religi & Kesehatan
 
-9️⃣ *LiveChat Admin*
+9️⃣ *Berita Kecamatan*
+   › Berita terbaru dari Kecamatan Medan Johor
+
+🔟 *LiveChat Admin*
    › Chat langsung dengan petugas kecamatan
 
-🔟 *Cek Status Laporan Saya*
+1️⃣1️⃣ *Cek Status Laporan Saya*
    › Lihat riwayat & status laporan yang pernah dikirim
 
 ━━━━━━━━━━━━━━━━━━━━━━━
-💡 Ketik *angka menu* (1-10) untuk memilih
+💡 Ketik *angka menu* (1-11) untuk memilih
 ━━━━━━━━━━━━━━━━━━━━━━━
 🏙️ *#MEDANUNTUKSEMUA*
 _Hallo Johor — Hadir untuk Warga Medan Johor_`;

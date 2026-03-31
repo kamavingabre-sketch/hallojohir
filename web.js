@@ -740,21 +740,33 @@ textarea.kg-input{resize:vertical;min-height:72px}
         <div class="bc-channel-title">📰 Berita Harian — Kecamatan Medan Johor</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.75">
           Sumber: <a href="https://medanjohor.medan.go.id/berita" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">medanjohor.medan.go.id/berita</a>
-          — judul, ringkasan, dan foto diambil otomatis dari halaman tersebut. Pilih <b>saluran tujuan</b> di bagian atas, lalu muat pratinjau atau langsung unggah.
+          — Pilih berita yang ingin disiarkan ke saluran WhatsApp. Foto dan ringkasan diambil otomatis dari halaman portal.
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
-          <label class="bc-label" style="margin:0">Jumlah berita:</label>
-          <select class="bc-select" id="medan-bc-count" style="max-width:100px">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3" selected>3</option>
-            <option value="5">5</option>
+          <label class="bc-label" style="margin:0">Tampilkan berita:</label>
+          <select class="bc-select" id="medan-bc-preview-count" style="max-width:100px">
+            <option value="3">3 terbaru</option>
+            <option value="5">5 terbaru</option>
+            <option value="8">8 terbaru</option>
+            <option value="10">10 terbaru</option>
           </select>
-          <button type="button" class="ref-btn" onclick="loadMedanBeritaPreview()">🔄 Muat pratinjau</button>
-          <button type="button" class="bc-send-btn" style="margin:0;padding:9px 18px;font-size:13px" onclick="queueMedanBeritaHarian()" id="medan-upload-btn">📤 Upload Berita Harian</button>
+          <button type="button" class="ref-btn" onclick="loadMedanBeritaList()">🔄 Muat List</button>
         </div>
-        <div id="medan-berita-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
-        <div id="medan-berita-preview" style="font-size:12px;color:var(--text2)">Klik <b>Muat pratinjau</b> untuk melihat cuplikan berita terbaru (teks + gambar).</div>
+        <div id="medan-berita-list-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
+        <div id="medan-berita-list-container" style="margin-bottom:12px">
+          <p style="color:var(--text2);font-size:12px">Klik "Muat List" untuk menampilkan daftar berita terbaru.</p>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button type="button" class="ref-btn" onclick="selectAllMedanNews()">✓ Pilih Semua</button>
+          <button type="button" class="ref-btn" onclick="deselectAllMedanNews()">✗ Hapus Pilihan</button>
+          <label class="bc-label" style="margin:0;flex:1;text-align:right">Saluran tujuan:</label>
+          <select class="bc-select" id="medan-bc-target" style="max-width:220px">
+            <option value="">— Pilih saluran —</option>
+            ${bcChannelOpts}
+          </select>
+        </div>
+        <button type="button" class="bc-send-btn" style="margin:0;padding:9px 18px;font-size:13px" onclick="sendSelectedMedanNews()" id="medan-send-selected-btn">📤 Kirim Berita Terpilih</button>
+        <div id="medan-berita-send-status" class="bc-ch-status" style="display:none;margin-top:10px"></div>
       </div>
 
       <div class="bc-channel-box" style="border-color:rgba(0,200,255,.25)">
@@ -1733,7 +1745,7 @@ async function loadMedanBeritaPreview() {
   const el = document.getElementById('medan-berita-preview');
   const st = document.getElementById('medan-berita-status');
   const n = document.getElementById('medan-bc-count').value;
-  el.innerHTML = '⏳ Memuat berita dari portal Kecamatan Medan Johor...';
+  el.innerHTML = '⏳ Memuat berita dari portal Pemko Medan...';
   st.style.display = 'none';
   try {
     const res = await fetch('/api/medan-berita?limit=' + encodeURIComponent(n));
@@ -1754,6 +1766,98 @@ async function loadMedanBeritaPreview() {
     st.className = 'bc-ch-status err';
     st.style.display = 'block';
     el.textContent = '';
+  }
+}
+
+async function loadMedanBeritaList() {
+  const container = document.getElementById('medan-berita-list-container');
+  const st = document.getElementById('medan-berita-list-status');
+  const n = parseInt(document.getElementById('medan-bc-preview-count').value, 10) || 5;
+  
+  container.innerHTML = '⏳ Memuat daftar berita...';
+  st.style.display = 'block';
+  st.className = 'bc-ch-status ok';
+  st.textContent = '⏳ Mengambil data berita...';
+  
+  try {
+    const res = await fetch('/api/medan-berita?limit=' + encodeURIComponent(n));
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal mengambil berita');
+    if (!json.items || !json.items.length) {
+      container.textContent = 'Tidak ada berita yang tersedia di halaman.';
+      st.style.display = 'none';
+      return;
+    }
+    
+    const newsHtml = json.items.map((it, idx) =>
+      '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;padding:12px;background:var(--bg3);border-radius:10px;border:1px solid var(--border)">' +
+      '<input type="checkbox" class="medan-news-checkbox" data-index="' + idx + '" style="width:18px;height:18px;margin-top:2px;cursor:pointer;flex-shrink:0">' +
+      '<img src="' + esc(it.imageUrl) + '" alt="" style="width:80px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0" loading="lazy">' +
+      '<div style="flex:1"><div style="font-weight:600;color:var(--text);margin-bottom:3px;font-size:13px">' + esc(it.title) + '</div>' +
+      '<div style="opacity:.85;line-height:1.4;font-size:12px">' + esc(it.description.length > 160 ? it.description.slice(0, 160) + '…' : it.description) + '</div></div></div>'
+    ).join('');
+    
+    container.innerHTML = newsHtml;
+    st.textContent = '✅ Daftar berita dimuat (' + json.items.length + ' berita)';
+    st.className = 'bc-ch-status ok';
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+    container.textContent = '';
+  }
+}
+
+function selectAllMedanNews() {
+  document.querySelectorAll('.medan-news-checkbox').forEach(cb => cb.checked = true);
+}
+
+function deselectAllMedanNews() {
+  document.querySelectorAll('.medan-news-checkbox').forEach(cb => cb.checked = false);
+}
+
+async function sendSelectedMedanNews() {
+  const target = document.getElementById('medan-bc-target').value.trim();
+  const st = document.getElementById('medan-berita-send-status');
+  const btn = document.getElementById('medan-send-selected-btn');
+  const checked = Array.from(document.querySelectorAll('.medan-news-checkbox:checked'));
+  
+  if (!target) {
+    st.textContent = '⚠️ Pilih saluran tujuan terlebih dahulu.';
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    return;
+  }
+  
+  if (!checked.length) {
+    st.textContent = '⚠️ Pilih minimal 1 berita untuk dikirim.';
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    return;
+  }
+  
+  const indices = checked.map(cb => parseInt(cb.dataset.index, 10));
+  btn.disabled = true;
+  st.style.display = 'block';
+  st.className = 'bc-ch-status ok';
+  st.textContent = '⏳ Mengunduh gambar & mengantre broadcast...';
+  
+  try {
+    const res = await fetch('/api/medan-berita/send-selected', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelJid: target, indices })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    st.textContent = '✅ ' + (json.message || json.queued + ' berita diantrekan.');
+    st.className = 'bc-ch-status ok';
+    deselectAllMedanNews();
+    setTimeout(() => refreshBcHistory(), 2500);
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -2809,6 +2913,59 @@ function copyIt() {
       const limit = Math.min(10, Math.max(1, parseInt(url_.searchParams.get('limit') || '5', 10)));
       const items = await scrapeMedanBeritaArticles(limit);
       return send(200, JSON.stringify({ ok: true, items }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/medan-berita/send-selected' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const channelJid = (body.channelJid || '').trim();
+      const indices = Array.isArray(body.indices) ? body.indices.map(i => parseInt(i, 10)) : [];
+      if (!channelJid) {
+        return send(400, JSON.stringify({ ok: false, error: 'channelJid diperlukan' }), 'application/json');
+      }
+      if (!indices.length) {
+        return send(400, JSON.stringify({ ok: false, error: 'Pilih minimal 1 berita' }), 'application/json');
+      }
+      const limit = Math.max(...indices) + 5;
+      const articles = await scrapeMedanBeritaArticles(limit);
+      if (!articles.length) {
+        return send(400, JSON.stringify({ ok: false, error: 'Tidak ada berita di halaman portal' }), 'application/json');
+      }
+      const ids = [];
+      const t0 = Date.now();
+      for (const idx of indices) {
+        if (idx < 0 || idx >= articles.length) continue;
+        const art = articles[idx];
+        let mediaFilename = null;
+        let mediaMime = null;
+        try {
+          const { buffer, mime } = await downloadImageBuffer(art.imageUrl);
+          mediaMime = mime;
+          const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+          mediaFilename = `bc_medan_${t0}_${idx}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+          fs.writeFileSync(path.join(BROADCAST_MEDIA_DIR, mediaFilename), buffer);
+        } catch {
+          mediaFilename = null;
+          mediaMime = null;
+        }
+        const pesan = `*${art.title}*\n\n${art.description}\n\n📰 Kecamatan Medan Johor\n${art.articleUrl}`;
+        const entry = queueBroadcast({
+          channelJid,
+          pesan,
+          mediaFilename,
+          mediaMime,
+        });
+        ids.push(entry.id);
+      }
+      return send(200, JSON.stringify({
+        ok: true,
+        message: `${ids.length} berita dipilih dan diantrekan. Bot akan mengirim bergiliran (±2,5 detik antar pesan).`,
+        queued: ids.length,
+        ids,
+      }), 'application/json');
     } catch (err) {
       return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
     }

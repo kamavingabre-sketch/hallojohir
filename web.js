@@ -1733,7 +1733,7 @@ async function loadMedanBeritaPreview() {
   const el = document.getElementById('medan-berita-preview');
   const st = document.getElementById('medan-berita-status');
   const n = document.getElementById('medan-bc-count').value;
-  el.innerHTML = '⏳ Memuat berita dari portal Pemko Medan...';
+  el.innerHTML = '⏳ Memuat berita dari portal Kecamatan Medan Johor...';
   st.style.display = 'none';
   try {
     const res = await fetch('/api/medan-berita?limit=' + encodeURIComponent(n));
@@ -2842,7 +2842,7 @@ function copyIt() {
           mediaFilename = null;
           mediaMime = null;
         }
-        const pesan = `*${art.title}*\n\n${art.description}\n\n📰 Pemko Medan\n${art.articleUrl}`;
+        const pesan = `*${art.title}*\n\n${art.description}\n\n📰 Kecamatan Medan Johor\n${art.articleUrl}`;
         const entry = queueBroadcast({
           channelJid,
           pesan,

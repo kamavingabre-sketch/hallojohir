@@ -1,10 +1,10 @@
 // Ambil daftar berita dari portal Kecamatan Medan Johor (judul, ringkasan, URL gambar, link artikel)
-// Sumber: https://medanjohor.go.id/berita
+// Sumber: https://medanjohor.medan.go.id/berita
 
 import { load } from 'cheerio';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-export const MEDAN_BERITA_URL = 'https://medanjohor.go.id/berita';
+export const MEDAN_BERITA_URL = 'https://medanjohor.medan.go.id/berita';
 
 export async function scrapeMedanBeritaArticles(limit = 10) {
   const res = await fetch(MEDAN_BERITA_URL, {

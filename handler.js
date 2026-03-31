@@ -256,7 +256,7 @@ export const handleMessage = async (sock, msg) => {
         articles.forEach((article, index) => {
           newsMessage += `${index + 1}. *${article.title}*\n${article.description}\n🔗 ${article.articleUrl}\n\n`;
         });
-        newsMessage += '━━━━━━━━━━━━━━━━━━━━━━━\n💡 Sumber: medanjohor.go.id/berita\n\nKetik *0* untuk kembali ke menu';
+        newsMessage += '━━━━━━━━━━━━━━━━━━━━━━━\n💡 Sumber: medanjohor.medan.go.id/berita\n\nKetik *0* untuk kembali ke menu';
         await sendText(sock, senderJid, newsMessage);
         logger.send(senderJid, 'Berita Kecamatan');
       } catch (error) {

@@ -739,7 +739,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
       <div class="bc-channel-box" style="border-color:rgba(21,73,115,.35)">
         <div class="bc-channel-title">📰 Berita Harian — Kecamatan Medan Johor</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.75">
-          Sumber: <a href="https://medanjohor.go.id/berita" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">medanjohor.go.id/berita</a>
+          Sumber: <a href="https://medanjohor.medan.go.id/berita" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">medanjohor.medan.go.id/berita</a>
           — judul, ringkasan, dan foto diambil otomatis dari halaman tersebut. Pilih <b>saluran tujuan</b> di bagian atas, lalu muat pratinjau atau langsung unggah.
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">

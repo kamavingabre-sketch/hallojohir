@@ -14,6 +14,7 @@ import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSe
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
+import { scrapeMedanJohorBeritaArticles, downloadMedanJohorImage, formatBeritaWhatsApp } from './medanjohor-berita.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -755,6 +756,27 @@ textarea.kg-input{resize:vertical;min-height:72px}
         </div>
         <div id="medan-berita-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
         <div id="medan-berita-preview" style="font-size:12px;color:var(--text2)">Klik <b>Muat pratinjau</b> untuk melihat cuplikan berita terbaru (teks + gambar).</div>
+      </div>
+
+      <div class="bc-channel-box" style="border-color:rgba(34,197,94,.3)">
+        <div class="bc-channel-title">🏙️ Berita — Kecamatan Medan Johor</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.75">
+          Sumber: <a href="https://medanjohor.medan.go.id/berita" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">medanjohor.medan.go.id/berita</a>
+          — judul, ringkasan, dan foto diambil dari website resmi kecamatan. Pilih <b>saluran tujuan</b> di bagian atas, lalu muat pratinjau atau langsung unggah.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+          <label class="bc-label" style="margin:0">Jumlah berita:</label>
+          <select class="bc-select" id="johor-bc-count" style="max-width:100px">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+          </select>
+          <button type="button" class="ref-btn" onclick="loadJohorBeritaPreview()">🔄 Muat pratinjau</button>
+          <button type="button" class="bc-send-btn" style="margin:0;padding:9px 18px;font-size:13px" onclick="queueJohorBeritaHarian()" id="johor-upload-btn">📤 Upload Berita Kecamatan</button>
+        </div>
+        <div id="johor-berita-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
+        <div id="johor-berita-preview" style="font-size:12px;color:var(--text2)">Klik <b>Muat pratinjau</b> untuk melihat cuplikan berita terbaru dari website kecamatan.</div>
       </div>
 
       <div class="bc-channel-box" style="border-color:rgba(0,200,255,.25)">
@@ -1754,6 +1776,79 @@ async function loadMedanBeritaPreview() {
     st.className = 'bc-ch-status err';
     st.style.display = 'block';
     el.textContent = '';
+  }
+}
+
+async function loadJohorBeritaPreview() {
+  const el = document.getElementById('johor-berita-preview');
+  const st = document.getElementById('johor-berita-status');
+  const n = document.getElementById('johor-bc-count').value;
+  el.innerHTML = '⏳ Memuat berita dari website Kecamatan Medan Johor...';
+  st.style.display = 'none';
+  try {
+    const res = await fetch('/api/medanjohor-berita?limit=' + encodeURIComponent(n));
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    if (!json.items || !json.items.length) {
+      el.textContent = 'Tidak ada berita yang bisa dibaca dari halaman.';
+      return;
+    }
+    el.innerHTML = json.items.map(it =>
+      '<div style="display:flex;gap:12px;margin-bottom:14px;padding:12px;background:var(--bg3);border-radius:10px;border:1px solid var(--border)">' +
+      '<img src="' + esc(it.imageUrl) + '" alt="" style="width:100px;height:72px;object-fit:cover;border-radius:6px;flex-shrink:0" loading="lazy" onerror="this.style.display=\'none\'">' +
+      '<div><div style="font-weight:600;color:var(--text);margin-bottom:4px">' + esc(it.title) + '</div>' +
+      (it.tanggal ? '<div style="font-size:11px;color:var(--muted);margin-bottom:3px">🗓️ ' + esc(it.tanggal) + (it.kategori ? ' &nbsp;🏷️ ' + esc(it.kategori) : '') + '</div>' : '') +
+      '<div style="opacity:.92;line-height:1.45">' + esc(it.description.length > 180 ? it.description.slice(0, 180) + '\u2026' : it.description) + '</div></div></div>'
+    ).join('');
+  } catch (e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+    st.style.display = 'block';
+    el.textContent = '';
+  }
+}
+
+async function queueJohorBeritaHarian() {
+  const channelJid = (document.getElementById('bc-channel-select')?.value || '').trim();
+  const n = parseInt(document.getElementById('johor-bc-count').value) || 3;
+  const st = document.getElementById('johor-berita-status');
+  const btn = document.getElementById('johor-upload-btn');
+  st.style.display = 'block';
+  if (!channelJid) {
+    st.style.color = '#f87171';
+    st.className = 'bc-ch-status err';
+    st.textContent = '⚠️ Pilih saluran tujuan terlebih dahulu di bagian atas.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '⏳ Mengantrekan...';
+  st.style.color = 'var(--cyan)';
+  st.className = 'bc-ch-status';
+  st.textContent = '⏳ Mengambil berita dari website kecamatan...';
+  try {
+    const res = await fetch('/api/medanjohor-berita/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelJid, limit: n }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      st.style.color = '#34d399';
+      st.className = 'bc-ch-status ok';
+      st.textContent = '✅ ' + data.message;
+      setTimeout(() => refreshBcHistory(), 3500);
+    } else {
+      st.style.color = '#f87171';
+      st.className = 'bc-ch-status err';
+      st.textContent = '❌ ' + data.error;
+    }
+  } catch (e) {
+    st.style.color = '#f87171';
+    st.className = 'bc-ch-status err';
+    st.textContent = '❌ Gagal: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '📤 Upload Berita Kecamatan';
   }
 }
 
@@ -2854,6 +2949,59 @@ function copyIt() {
       return send(200, JSON.stringify({
         ok: true,
         message: `${ids.length} broadcast berita diantrekan. Bot akan mengirim bergiliran (±2,5 detik antar pesan).`,
+        queued: ids.length,
+        ids,
+      }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/medanjohor-berita' && req.method === 'GET') {
+    try {
+      const limit = Math.min(10, Math.max(1, parseInt(url_.searchParams.get('limit') || '5', 10)));
+      const items = await scrapeMedanJohorBeritaArticles(limit);
+      return send(200, JSON.stringify({ ok: true, items }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/medanjohor-berita/queue' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const channelJid = (body.channelJid || '').trim();
+      const limit = Math.min(10, Math.max(1, parseInt(body.limit ?? 3, 10)));
+      if (!channelJid) {
+        return send(400, JSON.stringify({ ok: false, error: 'channelJid diperlukan' }), 'application/json');
+      }
+      const articles = await scrapeMedanJohorBeritaArticles(limit);
+      if (!articles.length) {
+        return send(400, JSON.stringify({ ok: false, error: 'Tidak ada berita di halaman kecamatan' }), 'application/json');
+      }
+      const ids = [];
+      const t0 = Date.now();
+      for (let i = 0; i < articles.length; i++) {
+        const art = articles[i];
+        let mediaFilename = null;
+        let mediaMime = null;
+        try {
+          const { buffer, mime } = await downloadMedanJohorImage(art.imageUrl);
+          mediaMime = mime;
+          const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+          mediaFilename = `bc_johor_${t0}_${i}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+          fs.writeFileSync(path.join(BROADCAST_MEDIA_DIR, mediaFilename), buffer);
+        } catch {
+          mediaFilename = null;
+          mediaMime = null;
+        }
+        const pesan = formatBeritaWhatsApp(art);
+        const entry = queueBroadcast({ channelJid, pesan, mediaFilename, mediaMime });
+        ids.push(entry.id);
+      }
+      return send(200, JSON.stringify({
+        ok: true,
+        message: ids.length + ' broadcast berita kecamatan diantrekan. Bot akan mengirim bergiliran (\xb12,5 detik antar pesan).',
         queued: ids.length,
         ids,
       }), 'application/json');

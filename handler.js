@@ -578,22 +578,21 @@ const handleLaporanFlow = async (sock, jid, name, msg, session, { textMsg, image
 
       for (const group of forwardGroups) {
         try {
-          // 1. Kirim teks laporan
-          await sendText(sock, group.id, groupText);
-          await delay(600);
-
-          // 2. Kirim foto bukti (buffer hasil download Baileys)
+          // 1. Kirim foto bukti sekaligus deskripsi laporan sebagai caption
+          //    Jika tidak ada foto, kirim teks laporan seperti biasa
           if (fotoBuffer) {
             await sock.sendMessage(group.id, {
               image: fotoBuffer,
               mimetype: session.fotoMime || 'image/jpeg',
-              caption: `📸 *Foto Bukti*\nLaporan #${String(laporanId).padStart(4, '0')} — ${name}`
+              caption: groupText
             });
-            logger.success('LAPORAN', `Foto bukti dikirim ke grup ${group.name}`);
-            await delay(600);
+            logger.success('LAPORAN', `Foto + deskripsi laporan dikirim ke grup ${group.name}`);
+          } else {
+            await sendText(sock, group.id, groupText);
           }
+          await delay(600);
 
-          // 3. Kirim lokasi
+          // 2. Kirim lokasi
           await sock.sendMessage(group.id, {
             location: {
               degreesLatitude: latitude,

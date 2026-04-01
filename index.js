@@ -19,9 +19,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { handleMessage } from './handler.js';
-import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent, getAutomationConfig, getLastProcessedBerita, setLastProcessedBerita, addAutomationHistory, queuePingMessage, getPendingPingMessages, markPingMessageDone } from './store.js';
+import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp } from './bmkg-cuaca.js';
-import { scrapePemkoBeritaArticles } from './medan-berita-pemko.js';
 import logger from './logger.js';
 
 // ─── Configuration ────────────────────────────────────────
@@ -82,7 +81,6 @@ let feedbackInterval = null;
 let livechatReplyInterval = null;
 let statusNotifInterval = null;
 let broadcastInterval = null;
-let pingInterval = null;
 
 function startFeedbackWorker(sock) {
   // Bersihkan interval lama jika ada (reconnect)
@@ -343,46 +341,6 @@ function startBroadcastWorker(sock) {
   logger.info('BROADCAST', '📢 Broadcast worker aktif (poll setiap 5 detik)');
 }
 
-// ─── Ping Message Worker ───────────────────────────────────
-// Kirim pesan langsung ke nomor WhatsApp pribadi
-function startPingWorker(sock) {
-  if (pingInterval) clearInterval(pingInterval);
-
-  pingInterval = setInterval(async () => {
-    let pending;
-    try { pending = getPendingPingMessages(); }
-    catch { return; }
-
-    for (const ping of pending) {
-      try {
-        const phoneNumber = ping.phoneNumber;
-        if (!phoneNumber) { markPingMessageDone(ping.id, 'failed', 'phoneNumber kosong'); continue; }
-
-        // Format nomor ke JID
-        const jid = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
-
-        if (!ping.pesan) {
-          markPingMessageDone(ping.id, 'failed', 'Tidak ada pesan');
-          continue;
-        }
-
-        await sock.sendMessage(jid, { text: ping.pesan });
-        markPingMessageDone(ping.id, 'sent');
-        logger.success('PING', `Pesan terkirim ke ${phoneNumber}`, ping.pesan.substring(0, 40));
-
-      } catch (err) {
-        markPingMessageDone(ping.id, 'failed', err.message);
-        logger.error('PING', `Gagal kirim ke ${ping.phoneNumber}`, err.message);
-      }
-
-      // Jeda antar kirim agar tidak rate-limit
-      await delay(2000);
-    }
-  }, 3000);
-
-  logger.info('PING', '📱 Ping message worker aktif (poll setiap 3 detik)');
-}
-
 function wibTimeParts() {
   const parts = {};
   for (const { type, value } of new Intl.DateTimeFormat('en-CA', {
@@ -426,82 +384,6 @@ function startWeatherScheduler() {
     }
   }, 40_000);
   logger.info('CUACA', '⏰ Penjadwal prakiraan BMKG aktif (00:00 WIB, jika diaktifkan di dashboard)');
-}
-
-/** Automation berita Pemko Medan: cek berita baru sesuai interval yang dikonfigurasi. */
-function startAutomationScheduler(sock) {
-  let lastCheck = 0;
-  setInterval(async () => {
-    const config = getAutomationConfig();
-    if (!config.enabled || !config.target) return;
-
-    // Validate target format
-    if (config.action === 'broadcast' && !config.target.includes('@')) return;
-    if (config.action === 'ping' && !/^\d{10,15}$/.test(config.target.replace(/\D/g, ''))) return;
-
-    const now = Date.now();
-    const intervalMs = (config.intervalMinutes || 30) * 60 * 1000;
-    if (now - lastCheck < intervalMs) return;
-
-    lastCheck = now;
-    try {
-      const beritaBaru = await scrapePemkoBeritaArticles(5); // Ambil 5 berita terbaru
-      const lastProcessed = getLastProcessedBerita() || [];
-
-      // Cari berita yang belum diproses
-      const newItems = beritaBaru.filter(item => !lastProcessed.some(lp => lp.title === item.title && lp.articleUrl === item.articleUrl));
-
-      if (newItems.length === 0) return; // Tidak ada berita baru
-
-      // Proses berita baru (ambil yang paling baru saja untuk demo)
-      const item = newItems[0];
-      let message = `📰 *Berita Baru dari Pemko Medan*\n\n📌 *${item.title}*\n\n${item.description}\n\n🔗 Baca selengkapnya: ${item.articleUrl}`;
-
-      if (config.action === 'broadcast') {
-        if (!config.target.includes('@')) {
-          logger.warn('AUTOMATION', 'Target broadcast tidak valid, skipping', config.target);
-          return;
-        }
-        queueBroadcast({ channelJid: config.target, pesan: message });
-        addAutomationHistory({
-          action: 'broadcast',
-          target: config.target,
-          title: item.title,
-          status: 'success'
-        });
-        logger.success('AUTOMATION', `Berita baru dikirim ke channel: ${item.title}`);
-      } else if (config.action === 'ping') {
-        if (!/^\d{10,15}$/.test(config.target.replace(/\D/g, ''))) {
-          logger.warn('AUTOMATION', 'Target ping tidak valid, skipping', config.target);
-          return;
-        }
-        // Queue ping message for bot to send
-        queuePingMessage({ phoneNumber: config.target, pesan: message });
-        addAutomationHistory({
-          action: 'ping',
-          target: config.target,
-          title: item.title,
-          status: 'success'
-        });
-        logger.success('AUTOMATION', `Berita baru dikirim ke nomor: ${config.target} - ${item.title}`);
-      }
-
-      // Update last processed
-      const updatedProcessed = [...lastProcessed, ...newItems.map(i => ({ title: i.title, articleUrl: i.articleUrl, processedAt: new Date().toISOString() }))];
-      setLastProcessedBerita(updatedProcessed.slice(-20)); // Simpan maksimal 20 berita terakhir
-
-    } catch (err) {
-      logger.error('AUTOMATION', 'Gagal cek berita baru', err.message);
-      addAutomationHistory({
-        action: config.action,
-        target: config.target,
-        title: 'Error Check',
-        status: 'failed',
-        error: err.message
-      });
-    }
-  }, 60_000); // Cek setiap 1 menit
-  logger.info('AUTOMATION', '🤖 Automation berita Pemko Medan aktif (jika diaktifkan di dashboard)');
 }
 
 // ─── Start Bot ───────────────────────────────────────────
@@ -619,8 +501,6 @@ async function startBot() {
       startLivechatReplyWorker(sock);
       startBroadcastWorker(sock);
       startNewsletterLookupWorker(sock);
-      startPingWorker(sock);
-      startAutomationScheduler(sock);
     }
 
     if (connection === 'close') {

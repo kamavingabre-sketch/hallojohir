@@ -345,8 +345,6 @@ function startBroadcastWorker(sock) {
 
 // ─── Ping Message Worker ───────────────────────────────────
 // Kirim pesan langsung ke nomor WhatsApp pribadi
-let pingInterval = null;
-
 function startPingWorker(sock) {
   if (pingInterval) clearInterval(pingInterval);
 

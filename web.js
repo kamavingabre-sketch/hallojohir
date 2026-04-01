@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getBeritaPemkoAutoConfig, setBeritaPemkoAutoConfig, updateBeritaPemkoAutoState } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
@@ -151,7 +151,7 @@ input:focus{border-color:#0090c8;box-shadow:0 0 0 3px rgba(0,200,255,.1)}
   <p class="foot">Kecamatan Medan Johor — Sistem Pengaduan Digital</p>
 </div></body></html>`;
 
-const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}, beritaAuto = {}) => {
+const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}) => {
   const total = laporan.length;
   const now = new Date();
   const today = laporan.filter(l => new Date(l.tanggal).toDateString() === now.toDateString()).length;
@@ -290,31 +290,14 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
       ).join('')
     : '';
 
-  // ── Automation: Berita Pemko Medan ──
-  const autoEnabled       = !!beritaAuto.enabled;
-  const autoModePing      = !!beritaAuto.modePing;
-  const autoModeBroadcast = !!beritaAuto.modeBroadcast;
-  const autoPingNumbers   = (beritaAuto.pingNumbers || []).join('\n');
-  const autoInterval      = beritaAuto.intervalMinutes || 30;
-  const autoChSel         = (beritaAuto.channelJid || '').trim();
-  const autoChannelOpts   = bcChannels.length
-    ? bcChannels.map(c =>
-        `<option value="${esc(c.jid)}"${autoChSel === c.jid ? ' selected' : ''}>${esc(c.name)} (${esc(c.jid.split('@')[0])}…)</option>`
-      ).join('')
-    : '';
-  const autoLastChecked    = esc(beritaAuto.lastCheckedAt      || '—');
-  const autoLastTitle      = esc(beritaAuto.lastNewArticleTitle || '—');
-  const autoLastUrl        = esc(beritaAuto.lastNewArticleUrl   || '');
-  const autoLastAt         = esc(beritaAuto.lastNewArticleAt    || '—');
-
   return `<!DOCTYPE html>
 <html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dashboard — Hallo Johor Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
 <script>
-const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','automation','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',automation:'Automation',panduan:'Panduan'};
+const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',panduan:'Panduan'};
 function showSec(id,el){
   document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on',s.id==='sec-'+id));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
@@ -518,8 +501,6 @@ textarea.kg-input{resize:vertical;min-height:72px}
 .bc-select:focus{border-color:var(--cyan2)}
 .bc-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;min-height:100px;outline:none;transition:border-color .2s}
 .bc-textarea:focus{border-color:var(--cyan2)}
-/* ── Automation (old stub removed) ── */
-
 .bc-media-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
 .bc-file-label{display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--bg3);border:1px dashed var(--border2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);transition:all .2s}
 .bc-file-label:hover{border-color:var(--cyan2);color:var(--cyan)}
@@ -552,37 +533,6 @@ textarea.kg-input{resize:vertical;min-height:72px}
 .bc-badge-failed{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(255,77,109,.1);color:#ff8fa3;border:1px solid rgba(255,77,109,.2)}
 .bc-thumb{width:48px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);cursor:pointer}
 .bc-video-icon{width:48px;height:40px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px}
-/* ── Automation ── */
-.auto-card{background:rgba(34,197,94,.04);border:1px solid rgba(34,197,94,.18);border-radius:12px;padding:20px 22px;margin-bottom:16px}
-.auto-card-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4ade80;margin-bottom:10px}
-.auto-toggle-row{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.auto-toggle{position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0}
-.auto-toggle input{opacity:0;width:0;height:0}
-.auto-slider{position:absolute;inset:0;background:var(--bg3);border-radius:24px;cursor:pointer;transition:.25s;border:1px solid var(--border2)}
-.auto-slider:before{content:'';position:absolute;width:18px;height:18px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.25s}
-.auto-toggle input:checked + .auto-slider{background:rgba(34,197,94,.25);border-color:#4ade80}
-.auto-toggle input:checked + .auto-slider:before{transform:translateX(20px);background:#4ade80}
-.auto-mode-box{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px}
-.auto-mode-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin-bottom:6px}
-.auto-mode-label:last-child{margin-bottom:0}
-.auto-mode-label input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:#4ade80}
-.auto-field-label{font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600}
-.auto-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;resize:vertical;min-height:80px;box-sizing:border-box}
-.auto-textarea:focus{outline:none;border-color:#4ade80}
-.auto-select{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;min-width:180px}
-.auto-select:focus{outline:none;border-color:#4ade80}
-.auto-input-num{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;width:90px}
-.auto-input-num:focus{outline:none;border-color:#4ade80}
-.auto-save-btn{background:linear-gradient(135deg,rgba(34,197,94,.2),rgba(16,185,129,.2));border:1px solid rgba(34,197,94,.4);color:#4ade80;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Syne',sans-serif}
-.auto-save-btn:hover{background:rgba(34,197,94,.25)}
-.auto-test-btn{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);color:#a78bfa;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Syne',sans-serif}
-.auto-test-btn:hover{background:rgba(167,139,250,.2)}
-.auto-status-box{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12px;color:var(--text2);line-height:1.9}
-.auto-status-ok{color:#4ade80;font-weight:600}
-.auto-status-warn{color:#fbbf24;font-weight:600}
-.auto-ch-status{margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600}
-.auto-ch-status.ok{background:rgba(34,197,94,.08);color:#4ade80;border:1px solid rgba(34,197,94,.2)}
-.auto-ch-status.err{background:rgba(255,77,109,.08);color:#ff8fa3;border:1px solid rgba(255,77,109,.2)}
 </style></head><body>
 
 <div class="sb">
@@ -599,7 +549,6 @@ textarea.kg-input{resize:vertical;min-height:72px}
     <div class="ni" onclick="showSec('livechat',this)"><span class="ic">💬</span> LiveChat <span id="lc-unread-badge" style="display:none;margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px"></span></div>
     <div class="ni" onclick="showSec('kegiatan',this)"><span class="ic">🎪</span> Kegiatan</div>
     <div class="ni" onclick="showSec('broadcast',this)"><span class="ic">📢</span> Broadcast</div>
-    <div class="ni" onclick="showSec('automation',this)"><span class="ic">⚙️</span> Automation</div>
     <div class="ni" onclick="showSec('grup',this)"><span class="ic">📡</span> Grup WhatsApp</div>
     <div class="nav-sec">Info</div>
     <div class="ni" onclick="showSec('panduan',this)"><span class="ic">📖</span> Panduan</div>
@@ -932,85 +881,6 @@ textarea.kg-input{resize:vertical;min-height:72px}
           <thead><tr><th>Status</th><th>Saluran</th><th>Pesan</th><th>Media</th><th>Waktu</th></tr></thead>
           <tbody id="bc-hist-tbody">${bcHistRows}</tbody>
         </table></div>
-      </div>
-    </div>
-
-
-    <div class="sec" id="sec-automation">
-      <div class="sec-title">⚙️ Automation</div>
-      <div class="sec-sub">Aksi otomatis berdasarkan trigger berita baru dari portal Pemko Medan</div>
-
-      <!-- Status Box -->
-      <div class="auto-status-box" id="auto-status-box">
-        <div style="margin-bottom:6px">
-          <span class="auto-indicator ${autoEnabled ? 'on' : 'off'}" id="auto-indicator"></span>
-          <b id="auto-status-label">${autoEnabled ? 'Automation AKTIF' : 'Automation NONAKTIF'}</b>
-        </div>
-        <div>⏱️ Interval pengecekan: <b id="auto-status-interval">${autoInterval} menit</b></div>
-        <div>🕐 Terakhir dicek: <b id="auto-status-checked">${autoLastChecked}</b></div>
-        <div>📰 Berita baru terakhir: <b id="auto-status-title">${autoLastTitle}</b>
-          ${autoLastUrl ? ' — <a href="' + autoLastUrl + '" target="_blank" rel="noopener" style="color:var(--cyan);font-size:11px">Buka →</a>' : ''}
-        </div>
-        <div>🗓️ Ditemukan pada: <b id="auto-status-at">${autoLastAt}</b></div>
-      </div>
-
-      <!-- Config Card -->
-      <div class="auto-box" style="border-color:rgba(245,158,11,.3)">
-        <div class="auto-box-title">🏛️ Berita Baru — Portal Pemko Medan</div>
-        <div class="auto-box-sub">
-          Sistem akan mengecek halaman
-          <a href="https://portal.medan.go.id/berita" target="_blank" rel="noopener" style="color:var(--cyan)">portal.medan.go.id/berita</a>
-          secara berkala. Jika artikel terbaru berubah (URL berbeda), aksi di bawah akan dijalankan otomatis.
-        </div>
-
-        <!-- Enable Toggle -->
-        <div class="auto-toggle-row" style="margin-bottom:16px">
-          <input type="checkbox" id="auto-enabled" ${autoEnabled ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;accent-color:#f59e0b">
-          <label for="auto-enabled" style="font-size:14px;font-weight:600">Aktifkan automation berita Pemko Medan</label>
-        </div>
-
-        <!-- Interval -->
-        <div style="margin-bottom:14px">
-          <label class="bc-label">Interval Pengecekan (menit)</label>
-          <input class="auto-input" id="auto-interval" type="number" min="5" max="1440" value="${autoInterval}" placeholder="30" style="max-width:140px">
-          <div style="font-size:11px;color:var(--muted);margin-top:-6px">Minimal 5 menit. Disarankan 30–60 menit agar tidak berlebihan.</div>
-        </div>
-
-        <!-- Mode Pilihan -->
-        <div style="margin-bottom:14px">
-          <label class="bc-label">Mode Aksi (bisa pilih keduanya)</label>
-          <div class="auto-toggle-row">
-            <input type="checkbox" id="auto-mode-ping" ${autoModePing ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;accent-color:#f59e0b">
-            <label for="auto-mode-ping">📱 Ping ke nomor WA tertentu</label>
-          </div>
-          <div class="auto-toggle-row">
-            <input type="checkbox" id="auto-mode-broadcast" ${autoModeBroadcast ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;accent-color:#f59e0b">
-            <label for="auto-mode-broadcast">📢 Auto broadcast ke saluran WhatsApp</label>
-          </div>
-        </div>
-
-        <!-- Ping Numbers -->
-        <div id="auto-ping-section" style="${autoModePing ? '' : 'display:none'}">
-          <label class="bc-label">Nomor WA tujuan ping (satu per baris, format: 628xxx...)</label>
-          <textarea class="auto-textarea" id="auto-ping-numbers" placeholder="628123456789&#10;628987654321">${autoPingNumbers}</textarea>
-          <div style="font-size:11px;color:var(--muted);margin-top:-6px;margin-bottom:10px">Nomor tanpa spasi/tanda. Contoh: 6281234567890</div>
-        </div>
-
-        <!-- Broadcast Channel -->
-        <div id="auto-broadcast-section" style="${autoModeBroadcast ? '' : 'display:none'}">
-          <label class="bc-label">Saluran WhatsApp tujuan broadcast</label>
-          <select class="auto-input" id="auto-channel" style="max-width:360px">
-            <option value="">— Pilih saluran —</option>
-            ${autoChannelOpts}
-          </select>
-        </div>
-
-        <!-- Tombol -->
-        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px">
-          <button class="auto-save-btn" id="auto-save-btn" onclick="saveAutoBeritaConfig()">💾 Simpan Konfigurasi</button>
-          <button class="auto-test-btn" id="auto-test-btn" onclick="testAutoBerita()">🧪 Test Sekarang</button>
-          <div id="auto-save-status" class="bc-ch-status" style="display:none"></div>
-        </div>
       </div>
     </div>
 
@@ -2119,124 +1989,6 @@ async function sendSelectedPemkoNews() {
   }
 }
 
-
-
-// ─── Automation: Berita Pemko Medan ──────────────────────────────────────────
-
-document.getElementById('auto-mode-ping').addEventListener('change', function() {
-  document.getElementById('auto-ping-section').style.display = this.checked ? '' : 'none';
-});
-document.getElementById('auto-mode-broadcast').addEventListener('change', function() {
-  document.getElementById('auto-broadcast-section').style.display = this.checked ? '' : 'none';
-});
-
-async function saveAutoBeritaConfig() {
-  const st  = document.getElementById('auto-save-status');
-  const btn = document.getElementById('auto-save-btn');
-  const enabled         = document.getElementById('auto-enabled').checked;
-  const modePing        = document.getElementById('auto-mode-ping').checked;
-  const modeBroadcast   = document.getElementById('auto-mode-broadcast').checked;
-  const intervalMinutes = parseInt(document.getElementById('auto-interval').value, 10) || 30;
-  const pingRaw         = document.getElementById('auto-ping-numbers').value;
-  const pingNumbers     = pingRaw.split('\n').map(s => s.replace(/\D/g, '')).filter(Boolean);
-  const channelJid      = document.getElementById('auto-channel').value.trim();
-
-  if (enabled && !modePing && !modeBroadcast) {
-    st.textContent = '\u26a0\ufe0f Pilih minimal satu mode aksi (Ping atau Broadcast).';
-    st.className = 'bc-ch-status err'; st.style.display = 'block'; return;
-  }
-  if (enabled && modePing && !pingNumbers.length) {
-    st.textContent = '\u26a0\ufe0f Isi minimal satu nomor WA untuk mode Ping.';
-    st.className = 'bc-ch-status err'; st.style.display = 'block'; return;
-  }
-  if (enabled && modeBroadcast && !channelJid) {
-    st.textContent = '\u26a0\ufe0f Pilih saluran untuk mode Broadcast.';
-    st.className = 'bc-ch-status err'; st.style.display = 'block'; return;
-  }
-  if (intervalMinutes < 5) {
-    st.textContent = '\u26a0\ufe0f Interval minimal 5 menit.';
-    st.className = 'bc-ch-status err'; st.style.display = 'block'; return;
-  }
-
-  btn.disabled = true;
-  st.textContent = '\u23f3 Menyimpan...';
-  st.className = 'bc-ch-status ok'; st.style.display = 'block';
-  try {
-    const res  = await fetch('/api/automation/berita-pemko', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled, modePing, modeBroadcast, pingNumbers, channelJid, intervalMinutes })
-    });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'Gagal menyimpan');
-    st.textContent = '\u2705 Konfigurasi berhasil disimpan.';
-    st.className = 'bc-ch-status ok';
-    // Update status indicator
-    const ind = document.getElementById('auto-indicator');
-    const lbl = document.getElementById('auto-status-label');
-    const ivl = document.getElementById('auto-status-interval');
-    if (ind) { ind.className = 'auto-indicator ' + (enabled ? 'on' : 'off'); }
-    if (lbl) { lbl.textContent = enabled ? 'Automation AKTIF' : 'Automation NONAKTIF'; }
-    if (ivl) { ivl.textContent = intervalMinutes + ' menit'; }
-  } catch (e) {
-    st.textContent = '\u274c ' + e.message;
-    st.className = 'bc-ch-status err';
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function testAutoBerita() {
-  const st  = document.getElementById('auto-save-status');
-  const btn = document.getElementById('auto-test-btn');
-  btn.disabled = true;
-  st.textContent = '\u23f3 Menjalankan test pengecekan berita...';
-  st.className = 'bc-ch-status ok'; st.style.display = 'block';
-  try {
-    const res  = await fetch('/api/automation/berita-pemko/test', { method: 'POST' });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'Gagal test');
-    st.textContent = '\u2705 ' + (json.message || 'Test selesai.');
-    st.className = 'bc-ch-status ok';
-    // Refresh status box
-    setTimeout(refreshAutoStatus, 2000);
-  } catch (e) {
-    st.textContent = '\u274c ' + e.message;
-    st.className = 'bc-ch-status err';
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function refreshAutoStatus() {
-  try {
-    const res  = await fetch('/api/automation/berita-pemko');
-    const json = await res.json();
-    if (!json.ok) return;
-    const d = json.config;
-    const ind = document.getElementById('auto-indicator');
-    const lbl = document.getElementById('auto-status-label');
-    const ivl = document.getElementById('auto-status-interval');
-    const chk = document.getElementById('auto-status-checked');
-    const ttl = document.getElementById('auto-status-title');
-    const aat = document.getElementById('auto-status-at');
-    if (ind) ind.className = 'auto-indicator ' + (d.enabled ? 'on' : 'off');
-    if (lbl) lbl.textContent = d.enabled ? 'Automation AKTIF' : 'Automation NONAKTIF';
-    if (ivl) ivl.textContent = (d.intervalMinutes || 30) + ' menit';
-    if (chk) chk.textContent = d.lastCheckedAt      || '\u2014';
-    if (ttl) ttl.textContent = d.lastNewArticleTitle || '\u2014';
-    if (aat) aat.textContent = d.lastNewArticleAt    || '\u2014';
-  } catch { /* silent */ }
-}
-
-// Auto-refresh status box setiap 60 detik saat di section automation
-setInterval(() => {
-  if (document.getElementById('sec-automation') &&
-      document.getElementById('sec-automation').style.display !== 'none') {
-    refreshAutoStatus();
-  }
-}, 60_000);
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function saveCuacaSchedule() {
@@ -2590,7 +2342,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig(), getBeritaPemkoAutoConfig()));
+  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig()));
   if (path_ === '/api/laporan') return send(200, JSON.stringify(getLaporan()), 'application/json');
 
   // ── API: Tambah Grup ──
@@ -3286,60 +3038,6 @@ function copyIt() {
     }
   }
 
-  // ── API: Automation Berita Pemko Medan ──────────────────────────────────
-
-  if (path_ === '/api/automation/berita-pemko' && req.method === 'GET') {
-    try {
-      const config = getBeritaPemkoAutoConfig();
-      return send(200, JSON.stringify({ ok: true, config }), 'application/json');
-    } catch (err) {
-      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
-    }
-  }
-
-  if (path_ === '/api/automation/berita-pemko' && req.method === 'POST') {
-    try {
-      const body = await parseJSONBody(req);
-      setBeritaPemkoAutoConfig({
-        enabled:         body.enabled,
-        modePing:        body.modePing,
-        modeBroadcast:   body.modeBroadcast,
-        pingNumbers:     body.pingNumbers,
-        channelJid:      body.channelJid,
-        intervalMinutes: body.intervalMinutes,
-      });
-      return send(200, JSON.stringify({ ok: true, message: 'Konfigurasi automation disimpan.' }), 'application/json');
-    } catch (err) {
-      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
-    }
-  }
-
-  if (path_ === '/api/automation/berita-pemko/test' && req.method === 'POST') {
-    try {
-      const cfg = getBeritaPemkoAutoConfig();
-      const articles = await scrapePemkoBeritaArticles(3);
-      if (!articles.length) {
-        return send(200, JSON.stringify({ ok: true, message: 'Scrape OK tapi tidak ada artikel ditemukan di portal.' }), 'application/json');
-      }
-      const latest = articles[0];
-      const isNew = !cfg.lastSeenUrl || cfg.lastSeenUrl !== latest.articleUrl;
-      const nowStr = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
-      updateBeritaPemkoAutoState({ lastCheckedAt: nowStr });
-      return send(200, JSON.stringify({
-        ok: true,
-        message: isNew
-          ? 'Scrape berhasil. Artikel terbaru: "' + latest.title.slice(0, 60) + '..." (belum pernah dikirim — akan diproses saat automation berjalan).'
-          : 'Scrape berhasil. Artikel terbaru sudah pernah dikirim sebelumnya ("' + latest.title.slice(0, 50) + '..."). Tidak ada berita baru.',
-        isNew,
-        latestTitle: latest.title,
-        latestUrl:   latest.articleUrl,
-        lastSeenUrl: cfg.lastSeenUrl || null,
-      }), 'application/json');
-    } catch (err) {
-      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
-    }
-  }
-
   // ── API: Pemko Medan Berita ──────────────────────────────────────────────
 
   if (path_ === '/api/pemko-berita' && req.method === 'GET') {
@@ -3512,7 +3210,6 @@ function copyIt() {
       return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
     }
   }
-
 
   return send(404, '404 Not Found', 'text/plain');
 });

@@ -2445,7 +2445,7 @@ async function paPreviewLatest() {
     const art = json.items[0];
     box.innerHTML =
       '<div style="display:flex;gap:14px;align-items:flex-start">' +
-      (art.imageUrl ? '<img src="' + art.imageUrl + '" style="width:80px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);flex-shrink:0" onerror="this.style.display=\'none\'">' : '') +
+      (art.imageUrl ? '<img src="' + art.imageUrl + '" style="width:80px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);flex-shrink:0" loading="lazy">' : '') +
       '<div>' +
       '<div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:5px">' + esc(art.title) + '</div>' +
       '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.6">' + esc(art.description ? art.description.substring(0,160)+'…' : '') + '</div>' +

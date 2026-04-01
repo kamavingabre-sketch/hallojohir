@@ -3280,7 +3280,7 @@ function copyIt() {
       // For testing, we can use default values if config is not set
       const testConfig = {
         action: config.action || 'broadcast',
-        target: config.target || 'test-target',
+        target: config.target || '',
         enabled: true // Always enable for testing
       };
 
@@ -3291,7 +3291,8 @@ function copyIt() {
       let message = `📰 *Berita Baru dari Pemko Medan*\n\n📌 *${item.title}*\n\n${item.description}\n\n🔗 Baca selengkapnya: ${item.articleUrl}`;
 
       if (testConfig.action === 'broadcast') {
-        if (!testConfig.target) return send(400, JSON.stringify({ ok: false, error: 'Target saluran belum dipilih' }), 'application/json');
+        if (!testConfig.target) return send(400, JSON.stringify({ ok: false, error: 'Target saluran belum dipilih. Silakan pilih saluran terlebih dahulu.' }), 'application/json');
+        if (!testConfig.target.includes('@')) return send(400, JSON.stringify({ ok: false, error: 'Format target tidak valid. Pastikan menggunakan JID saluran yang benar.' }), 'application/json');
         queueBroadcast({ channelJid: testConfig.target, pesan: message });
         addAutomationHistory({
           action: 'broadcast',
@@ -3300,7 +3301,8 @@ function copyIt() {
           status: 'success'
         });
       } else if (testConfig.action === 'ping') {
-        if (!testConfig.target) return send(400, JSON.stringify({ ok: false, error: 'Nomor WA target belum diisi' }), 'application/json');
+        if (!testConfig.target) return send(400, JSON.stringify({ ok: false, error: 'Nomor WA target belum diisi. Silakan isi nomor terlebih dahulu.' }), 'application/json');
+        if (!/^\d{10,15}$/.test(testConfig.target.replace(/\D/g, ''))) return send(400, JSON.stringify({ ok: false, error: 'Format nomor WA tidak valid. Gunakan format: 628xxxxxxxxx' }), 'application/json');
         // Queue ping message for bot to send
         queuePingMessage({ phoneNumber: testConfig.target, pesan: message });
         addAutomationHistory({

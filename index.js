@@ -435,6 +435,10 @@ function startAutomationScheduler(sock) {
     const config = getAutomationConfig();
     if (!config.enabled || !config.target) return;
 
+    // Validate target format
+    if (config.action === 'broadcast' && !config.target.includes('@')) return;
+    if (config.action === 'ping' && !/^\d{10,15}$/.test(config.target.replace(/\D/g, ''))) return;
+
     const now = Date.now();
     const intervalMs = (config.intervalMinutes || 30) * 60 * 1000;
     if (now - lastCheck < intervalMs) return;
@@ -454,6 +458,10 @@ function startAutomationScheduler(sock) {
       let message = `📰 *Berita Baru dari Pemko Medan*\n\n📌 *${item.title}*\n\n${item.description}\n\n🔗 Baca selengkapnya: ${item.articleUrl}`;
 
       if (config.action === 'broadcast') {
+        if (!config.target.includes('@')) {
+          logger.warn('AUTOMATION', 'Target broadcast tidak valid, skipping', config.target);
+          return;
+        }
         queueBroadcast({ channelJid: config.target, pesan: message });
         addAutomationHistory({
           action: 'broadcast',
@@ -463,6 +471,10 @@ function startAutomationScheduler(sock) {
         });
         logger.success('AUTOMATION', `Berita baru dikirim ke channel: ${item.title}`);
       } else if (config.action === 'ping') {
+        if (!/^\d{10,15}$/.test(config.target.replace(/\D/g, ''))) {
+          logger.warn('AUTOMATION', 'Target ping tidak valid, skipping', config.target);
+          return;
+        }
         // Queue ping message for bot to send
         queuePingMessage({ phoneNumber: config.target, pesan: message });
         addAutomationHistory({

@@ -542,3 +542,37 @@ export const markWeatherBroadcastSent = (wibYmd) => {
     lastSentDate: wibYmd,
   });
 };
+
+// ── Automation Berita Pemko Medan ──────────────────────────
+export const getAutomationConfig = () => {
+  return readJSON('automation_config.json');
+};
+
+export const setAutomationConfig = (config) => {
+  writeJSON('automation_config.json', config);
+};
+
+export const getLastProcessedBerita = () => {
+  return readJSON('last_processed_berita.json');
+};
+
+export const setLastProcessedBerita = (beritaList) => {
+  writeJSON('last_processed_berita.json', beritaList);
+};
+
+export const getAutomationHistory = () => {
+  return readJSON('automation_history.json');
+};
+
+export const addAutomationHistory = (entry) => {
+  const data = readJSON('automation_history.json');
+  if (!Array.isArray(data)) data = [];
+  data.unshift({
+    ...entry,
+    timestamp: new Date().toISOString(),
+    id: Date.now()
+  });
+  // Keep only last 100 entries
+  if (data.length > 100) data = data.slice(0, 100);
+  writeJSON('automation_history.json', data);
+};

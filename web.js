@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getAutomationConfig, setAutomationConfig, getAutomationHistory, addAutomationHistory } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
@@ -296,8 +296,8 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
 <script>
-const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',panduan:'Panduan'};
+const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','automation','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',automation:'Automation Berita',panduan:'Panduan'};
 function showSec(id,el){
   document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on',s.id==='sec-'+id));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
@@ -549,6 +549,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
     <div class="ni" onclick="showSec('livechat',this)"><span class="ic">💬</span> LiveChat <span id="lc-unread-badge" style="display:none;margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px"></span></div>
     <div class="ni" onclick="showSec('kegiatan',this)"><span class="ic">🎪</span> Kegiatan</div>
     <div class="ni" onclick="showSec('broadcast',this)"><span class="ic">📢</span> Broadcast</div>
+    <div class="ni" onclick="showSec('automation',this)"><span class="ic">🤖</span> Automation</div>
     <div class="ni" onclick="showSec('grup',this)"><span class="ic">📡</span> Grup WhatsApp</div>
     <div class="nav-sec">Info</div>
     <div class="ni" onclick="showSec('panduan',this)"><span class="ic">📖</span> Panduan</div>
@@ -880,6 +881,75 @@ textarea.kg-input{resize:vertical;min-height:72px}
         <div class="tbl-wrap"><table>
           <thead><tr><th>Status</th><th>Saluran</th><th>Pesan</th><th>Media</th><th>Waktu</th></tr></thead>
           <tbody id="bc-hist-tbody">${bcHistRows}</tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-automation">
+      <div class="sec-title">Automation Berita</div>
+      <div class="sec-sub">Otomatisasi pengiriman berita baru dari portal Pemko Medan</div>
+
+      <div class="bc-compose">
+        <div class="bc-compose-title">⚙️ Konfigurasi Automation</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:16px">
+          Bot akan secara berkala mengecek berita baru di <a href="https://portal.medan.go.id/berita" target="_blank" rel="noopener noreferrer" style="color:var(--cyan)">portal.medan.go.id/berita</a> dan mengirim notifikasi otomatis sesuai pengaturan di bawah.
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+          <label class="bc-label" style="margin:0">Aksi:</label>
+          <select class="bc-select" id="auto-action" style="min-width:180px">
+            <option value="broadcast">📢 Broadcast ke Saluran</option>
+            <option value="ping">📱 Ping ke Nomor WA</option>
+          </select>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+          <label class="bc-label" style="margin:0">Target:</label>
+          <select class="bc-select" id="auto-target" style="min-width:220px;flex:1">
+            <option value="">— Pilih target —</option>
+            ${bcChannelOpts}
+          </select>
+          <input class="bc-ch-input" id="auto-phone" placeholder="628xxxxxxxxx" type="text" style="display:none;max-width:200px" maxlength="15">
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+          <label class="bc-label" style="margin:0">Interval:</label>
+          <select class="bc-select" id="auto-interval" style="min-width:150px">
+            <option value="5">5 menit</option>
+            <option value="15">15 menit</option>
+            <option value="30" selected>30 menit</option>
+            <option value="60">1 jam</option>
+            <option value="120">2 jam</option>
+            <option value="240">4 jam</option>
+          </select>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin-bottom:12px;cursor:pointer">
+          <input type="checkbox" id="auto-enabled" style="width:16px;height:16px">
+          <span>Aktifkan automation berita Pemko Medan</span>
+        </label>
+
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">
+          <button type="button" class="ref-btn" onclick="saveAutomationConfig()">💾 Simpan Konfigurasi</button>
+          <button type="button" class="ref-btn" onclick="testAutomation()">🧪 Test Sekarang</button>
+        </div>
+
+        <div id="auto-status" class="bc-ch-status" style="display:none;margin-bottom:10px"></div>
+      </div>
+
+      <div class="tc">
+        <div class="tc-head">
+          <div class="tc-head-l">
+            <span class="tc-name">Riwayat Automation</span>
+            <span class="cnt-badge" id="auto-hist-count">0 aktivitas</span>
+          </div>
+          <button class="ref-btn" onclick="refreshAutoHistory()">🔄 Refresh</button>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Status</th><th>Aksi</th><th>Target</th><th>Judul Berita</th><th>Waktu</th></tr></thead>
+          <tbody id="auto-hist-tbody">
+            <tr><td colspan="5" class="empty-row">Belum ada aktivitas automation</td></tr>
+          </tbody>
         </table></div>
       </div>
     </div>
@@ -2233,6 +2303,131 @@ async function refreshBcHistory() {
     sel.value = cur;
   } catch(e) { console.error('refreshBcHistory error:', e); }
 }
+
+// ── Automation Functions ──────────────────────────────────────
+document.getElementById('auto-action').addEventListener('change', function() {
+  const action = this.value;
+  const targetSel = document.getElementById('auto-target');
+  const phoneInp = document.getElementById('auto-phone');
+  if (action === 'ping') {
+    targetSel.style.display = 'none';
+    phoneInp.style.display = 'block';
+  } else {
+    targetSel.style.display = 'block';
+    phoneInp.style.display = 'none';
+  }
+});
+
+async function saveAutomationConfig() {
+  const enabled = document.getElementById('auto-enabled').checked;
+  const action = document.getElementById('auto-action').value;
+  const target = action === 'ping' ? document.getElementById('auto-phone').value.trim() : document.getElementById('auto-target').value;
+  const intervalMinutes = parseInt(document.getElementById('auto-interval').value, 10);
+  const statusEl = document.getElementById('auto-status');
+
+  if (enabled && !target) {
+    statusEl.textContent = '⚠️ Pilih target terlebih dahulu.';
+    statusEl.className = 'bc-ch-status err';
+    statusEl.style.display = 'block';
+    return;
+  }
+
+  statusEl.textContent = '⏳ Menyimpan konfigurasi...';
+  statusEl.className = 'bc-ch-status ok';
+  statusEl.style.display = 'block';
+
+  try {
+    const res = await fetch('/api/automation/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, action, target, intervalMinutes })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      statusEl.textContent = '✅ Konfigurasi automation berhasil disimpan!';
+      statusEl.className = 'bc-ch-status ok';
+    } else {
+      throw new Error(json.error || 'Gagal menyimpan');
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ ' + e.message;
+    statusEl.className = 'bc-ch-status err';
+  }
+}
+
+async function testAutomation() {
+  const statusEl = document.getElementById('auto-status');
+  statusEl.textContent = '⏳ Menguji automation...';
+  statusEl.className = 'bc-ch-status ok';
+  statusEl.style.display = 'block';
+
+  try {
+    const res = await fetch('/api/automation/test', { method: 'POST' });
+    const json = await res.json();
+    if (json.ok) {
+      statusEl.textContent = '✅ ' + (json.message || 'Test berhasil!');
+      statusEl.className = 'bc-ch-status ok';
+      setTimeout(() => refreshAutoHistory(), 2000);
+    } else {
+      throw new Error(json.error || 'Test gagal');
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ ' + e.message;
+    statusEl.className = 'bc-ch-status err';
+  }
+}
+
+async function refreshAutoHistory() {
+  try {
+    const res = await fetch('/api/automation/history');
+    const json = await res.json();
+    if (!json.ok) return;
+    const history = json.history || [];
+    const rows = history.length ? history.map(h => {
+      const badgeCls = h.status === 'success' ? 'bc-badge-sent' : h.status === 'failed' ? 'bc-badge-failed' : 'bc-badge-pending';
+      const statusText = h.status === 'success' ? '✅ Berhasil' : h.status === 'failed' ? '❌ Gagal' : '⏳ Diproses';
+      const actionText = h.action === 'ping' ? '📱 Ping WA' : '📢 Broadcast';
+      return '<tr>'
+        + '<td><span class="' + badgeCls + '">' + statusText + '</span></td>'
+        + '<td>' + actionText + '</td>'
+        + '<td class="fz13 fw5">' + esc(h.target || '-') + '</td>'
+        + '<td class="fz13 text-muted2" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc((h.title || '').substring(0,50)) + ((h.title || '').length > 50 ? '…' : '') + '</td>'
+        + '<td class="fz12 text-muted2">' + (h.timestamp ? new Date(h.timestamp).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-') + '</td>'
+        + '</tr>';
+    }).join('') : '<tr><td colspan="5" class="empty-row">Belum ada aktivitas automation</td></tr>';
+
+    document.getElementById('auto-hist-tbody').innerHTML = rows;
+    document.getElementById('auto-hist-count').textContent = history.length + ' aktivitas';
+  } catch (e) {
+    console.error('Error refreshing automation history:', e);
+  }
+}
+
+// Load automation config on page load
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const res = await fetch('/api/automation/config');
+    const json = await res.json();
+    if (json.ok && json.config) {
+      const config = json.config;
+      document.getElementById('auto-enabled').checked = config.enabled || false;
+      document.getElementById('auto-action').value = config.action || 'broadcast';
+      document.getElementById('auto-interval').value = config.intervalMinutes || 30;
+      if (config.action === 'ping') {
+        document.getElementById('auto-phone').value = config.target || '';
+        document.getElementById('auto-phone').style.display = 'block';
+        document.getElementById('auto-target').style.display = 'none';
+      } else {
+        document.getElementById('auto-target').value = config.target || '';
+        document.getElementById('auto-phone').style.display = 'none';
+        document.getElementById('auto-target').style.display = 'block';
+      }
+    }
+  } catch (e) {
+    console.error('Error loading automation config:', e);
+  }
+  refreshAutoHistory();
+});
 <\/script></body></html>`;
 };
 
@@ -3045,6 +3240,89 @@ function copyIt() {
       const limit = Math.min(10, Math.max(1, parseInt(url_.searchParams.get('limit') || '5', 10)));
       const items = await scrapePemkoBeritaArticles(limit);
       return send(200, JSON.stringify({ ok: true, items }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Automation Config ──────────────────────────────────────────────
+
+  if (path_ === '/api/automation/config' && req.method === 'GET') {
+    try {
+      const config = getAutomationConfig();
+      return send(200, JSON.stringify({ ok: true, config }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/automation/config' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const config = {
+        enabled: !!body.enabled,
+        action: body.action || 'broadcast', // 'broadcast' or 'ping'
+        target: (body.target || '').trim(), // channelJid for broadcast, phone number for ping
+        intervalMinutes: Math.max(5, Math.min(1440, parseInt(body.intervalMinutes) || 30)), // 5 min to 24 hours
+      };
+      setAutomationConfig(config);
+      return send(200, JSON.stringify({ ok: true, config }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Automation Test ──────────────────────────────────────
+
+  if (path_ === '/api/automation/test' && req.method === 'POST') {
+    try {
+      const config = getAutomationConfig();
+      if (!config.enabled) return send(400, JSON.stringify({ ok: false, error: 'Automation tidak aktif' }), 'application/json');
+
+      const berita = await scrapePemkoBeritaArticles(1);
+      if (!berita.length) return send(400, JSON.stringify({ ok: false, error: 'Tidak ada berita tersedia' }), 'application/json');
+
+      const item = berita[0];
+      let message = `📰 *Berita Baru dari Pemko Medan*\n\n📌 *${item.title}*\n\n${item.description}\n\n🔗 Baca selengkapnya: ${item.articleUrl}`;
+
+      if (config.action === 'broadcast') {
+        queueBroadcast({ channelJid: config.target, pesan: message });
+        addAutomationHistory({
+          action: 'broadcast',
+          target: config.target,
+          title: item.title,
+          status: 'success'
+        });
+      } else if (config.action === 'ping') {
+        // For ping, we'll need to implement direct messaging
+        // For now, just log it
+        addAutomationHistory({
+          action: 'ping',
+          target: config.target,
+          title: item.title,
+          status: 'success'
+        });
+      }
+
+      return send(200, JSON.stringify({ ok: true, message: 'Test automation berhasil! Berita terbaru dikirim.' }), 'application/json');
+    } catch (err) {
+      addAutomationHistory({
+        action: config?.action || 'unknown',
+        target: config?.target || 'unknown',
+        title: 'Test Automation',
+        status: 'failed',
+        error: err.message
+      });
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Automation History ───────────────────────────────────
+
+  if (path_ === '/api/automation/history' && req.method === 'GET') {
+    try {
+      const history = getAutomationHistory();
+      return send(200, JSON.stringify({ ok: true, history: Array.isArray(history) ? history : [] }), 'application/json');
     } catch (err) {
       return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
     }

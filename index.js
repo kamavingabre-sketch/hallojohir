@@ -19,7 +19,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { handleMessage } from './handler.js';
-import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent, getAutomationConfig, getLastProcessedBerita, setLastProcessedBerita, addAutomationHistory } from './store.js';
+import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent, getAutomationConfig, getLastProcessedBerita, setLastProcessedBerita, addAutomationHistory, queuePingMessage, getPendingPingMessages, markPingMessageDone } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp } from './bmkg-cuaca.js';
 import { scrapePemkoBeritaArticles } from './medan-berita-pemko.js';
 import logger from './logger.js';
@@ -82,6 +82,7 @@ let feedbackInterval = null;
 let livechatReplyInterval = null;
 let statusNotifInterval = null;
 let broadcastInterval = null;
+let pingInterval = null;
 
 function startFeedbackWorker(sock) {
   // Bersihkan interval lama jika ada (reconnect)
@@ -342,6 +343,48 @@ function startBroadcastWorker(sock) {
   logger.info('BROADCAST', '📢 Broadcast worker aktif (poll setiap 5 detik)');
 }
 
+// ─── Ping Message Worker ───────────────────────────────────
+// Kirim pesan langsung ke nomor WhatsApp pribadi
+let pingInterval = null;
+
+function startPingWorker(sock) {
+  if (pingInterval) clearInterval(pingInterval);
+
+  pingInterval = setInterval(async () => {
+    let pending;
+    try { pending = getPendingPingMessages(); }
+    catch { return; }
+
+    for (const ping of pending) {
+      try {
+        const phoneNumber = ping.phoneNumber;
+        if (!phoneNumber) { markPingMessageDone(ping.id, 'failed', 'phoneNumber kosong'); continue; }
+
+        // Format nomor ke JID
+        const jid = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+
+        if (!ping.pesan) {
+          markPingMessageDone(ping.id, 'failed', 'Tidak ada pesan');
+          continue;
+        }
+
+        await sock.sendMessage(jid, { text: ping.pesan });
+        markPingMessageDone(ping.id, 'sent');
+        logger.success('PING', `Pesan terkirim ke ${phoneNumber}`, ping.pesan.substring(0, 40));
+
+      } catch (err) {
+        markPingMessageDone(ping.id, 'failed', err.message);
+        logger.error('PING', `Gagal kirim ke ${ping.phoneNumber}`, err.message);
+      }
+
+      // Jeda antar kirim agar tidak rate-limit
+      await delay(2000);
+    }
+  }, 3000);
+
+  logger.info('PING', '📱 Ping message worker aktif (poll setiap 3 detik)');
+}
+
 function wibTimeParts() {
   const parts = {};
   for (const { type, value } of new Intl.DateTimeFormat('en-CA', {
@@ -422,9 +465,8 @@ function startAutomationScheduler(sock) {
         });
         logger.success('AUTOMATION', `Berita baru dikirim ke channel: ${item.title}`);
       } else if (config.action === 'ping') {
-        // Kirim pesan pribadi ke nomor WA
-        const jid = config.target.includes('@') ? config.target : `${config.target}@s.whatsapp.net`;
-        await sock.sendMessage(jid, { text: message });
+        // Queue ping message for bot to send
+        queuePingMessage({ phoneNumber: config.target, pesan: message });
         addAutomationHistory({
           action: 'ping',
           target: config.target,
@@ -567,6 +609,7 @@ async function startBot() {
       startLivechatReplyWorker(sock);
       startBroadcastWorker(sock);
       startNewsletterLookupWorker(sock);
+      startPingWorker(sock);
       startAutomationScheduler(sock);
     }
 

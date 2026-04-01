@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getAutomationConfig, setAutomationConfig, getAutomationHistory, addAutomationHistory } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getAutomationConfig, setAutomationConfig, getAutomationHistory, addAutomationHistory, queuePingMessage } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
@@ -3277,43 +3277,51 @@ function copyIt() {
   if (path_ === '/api/automation/test' && req.method === 'POST') {
     try {
       const config = getAutomationConfig();
-      if (!config.enabled) return send(400, JSON.stringify({ ok: false, error: 'Automation tidak aktif' }), 'application/json');
+      // For testing, we can use default values if config is not set
+      const testConfig = {
+        action: config.action || 'broadcast',
+        target: config.target || 'test-target',
+        enabled: true // Always enable for testing
+      };
 
       const berita = await scrapePemkoBeritaArticles(1);
-      if (!berita.length) return send(400, JSON.stringify({ ok: false, error: 'Tidak ada berita tersedia' }), 'application/json');
+      if (!berita.length) return send(400, JSON.stringify({ ok: false, error: 'Tidak ada berita tersedia di portal Pemko Medan' }), 'application/json');
 
       const item = berita[0];
       let message = `📰 *Berita Baru dari Pemko Medan*\n\n📌 *${item.title}*\n\n${item.description}\n\n🔗 Baca selengkapnya: ${item.articleUrl}`;
 
-      if (config.action === 'broadcast') {
-        queueBroadcast({ channelJid: config.target, pesan: message });
+      if (testConfig.action === 'broadcast') {
+        if (!testConfig.target) return send(400, JSON.stringify({ ok: false, error: 'Target saluran belum dipilih' }), 'application/json');
+        queueBroadcast({ channelJid: testConfig.target, pesan: message });
         addAutomationHistory({
           action: 'broadcast',
-          target: config.target,
+          target: testConfig.target,
           title: item.title,
           status: 'success'
         });
-      } else if (config.action === 'ping') {
-        // For ping, we'll need to implement direct messaging
-        // For now, just log it
+      } else if (testConfig.action === 'ping') {
+        if (!testConfig.target) return send(400, JSON.stringify({ ok: false, error: 'Nomor WA target belum diisi' }), 'application/json');
+        // Queue ping message for bot to send
+        queuePingMessage({ phoneNumber: testConfig.target, pesan: message });
         addAutomationHistory({
           action: 'ping',
-          target: config.target,
+          target: testConfig.target,
           title: item.title,
           status: 'success'
         });
       }
 
-      return send(200, JSON.stringify({ ok: true, message: 'Test automation berhasil! Berita terbaru dikirim.' }), 'application/json');
+      return send(200, JSON.stringify({ ok: true, message: 'Test automation berhasil! Berita terbaru dikirim ke: ' + testConfig.target }), 'application/json');
     } catch (err) {
+      console.error('Automation test error:', err);
       addAutomationHistory({
-        action: config?.action || 'unknown',
-        target: config?.target || 'unknown',
-        title: 'Test Automation',
+        action: 'test',
+        target: 'unknown',
+        title: 'Test Error',
         status: 'failed',
         error: err.message
       });
-      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+      return send(500, JSON.stringify({ ok: false, error: 'Gagal test automation: ' + err.message }), 'application/json');
     }
   }
 

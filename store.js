@@ -576,3 +576,38 @@ export const addAutomationHistory = (entry) => {
   if (data.length > 100) data = data.slice(0, 100);
   writeJSON('automation_history.json', data);
 };
+
+// ── Ping Message Queue ────────────────────────────────────
+export const queuePingMessage = (item) => {
+  const data = readJSON('ping_queue.json');
+  if (!data.queue) data.queue = [];
+  const entry = {
+    id: `ping_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    sentAt: null,
+    error: null,
+    ...item,
+  };
+  data.queue.push(entry);
+  writeJSON('ping_queue.json', data);
+  return entry;
+};
+
+export const getPendingPingMessages = () => {
+  const data = readJSON('ping_queue.json');
+  return (data.queue || []).filter(p => p.status === 'pending');
+};
+
+export const markPingMessageDone = (id, status = 'sent', error = null) => {
+  const data = readJSON('ping_queue.json');
+  const item = data.queue?.find(p => p.id === id);
+  if (item) {
+    item.status = status;
+    item.sentAt = new Date().toISOString();
+    item.error = error;
+    writeJSON('ping_queue.json', data);
+    return true;
+  }
+  return false;
+};

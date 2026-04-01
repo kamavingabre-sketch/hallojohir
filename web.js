@@ -304,6 +304,27 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
         `<option value="${esc(c.jid)}"${paChSel === c.jid ? ' selected' : ''}>${esc(c.name)} (${esc(c.jid.split('@')[0])}…)</option>`
       ).join('')
     : `<option value="" disabled>— Belum ada saluran terdaftar —</option>`;
+  // Pre-compute values to avoid nested ternary inside template literal HTML attributes
+  const paIsPing        = paMode === 'ping';
+  const paEnabledLabel  = paEnabled  ? 'Aktif'    : 'Nonaktif';
+  const paEnabledChecked= paEnabled  ? 'checked'  : '';
+  const paBadgeBg       = paEnabled  ? 'rgba(74,222,128,.15)'  : 'rgba(255,77,109,.1)';
+  const paBadgeColor    = paEnabled  ? '#4ade80'  : '#ff8fa3';
+  const paBadgeBorder   = paEnabled  ? 'rgba(74,222,128,.3)'   : 'rgba(255,77,109,.2)';
+  const paBadgeText     = paEnabled  ? '● AKTIF'  : '○ NONAKTIF';
+  const paPingBorder    = paIsPing   ? 'var(--cyan)' : 'var(--border2)';
+  const paBcBorder      = !paIsPing  ? 'var(--cyan)' : 'var(--border2)';
+  const paPingChecked   = paIsPing   ? 'checked'  : '';
+  const paBcChecked     = !paIsPing  ? 'checked'  : '';
+  const paPingDisplay   = paIsPing   ? 'block'    : 'none';
+  const paBcDisplay     = !paIsPing  ? 'block'    : 'none';
+  const paInt15   = paInterval === 15  ? 'selected' : '';
+  const paInt30   = paInterval === 30  ? 'selected' : '';
+  const paInt60   = paInterval === 60  ? 'selected' : '';
+  const paInt120  = paInterval === 120 ? 'selected' : '';
+  const paInt360  = paInterval === 360 ? 'selected' : '';
+  const paLastUrlShort = paLastUrl.length > 60 ? paLastUrl.slice(0,60)+'…' : paLastUrl;
+  const paLastUrlHref  = paLastUrl !== '—' ? esc(paLastUrl) : '#';
 
   return `<!DOCTYPE html>
 <html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -907,8 +928,8 @@ textarea.kg-input{resize:vertical;min-height:72px}
       <!-- ─ Automation: Berita Pemko Medan ─ -->
       <div class="bc-compose" style="border-color:rgba(34,211,238,.2)">
         <div class="bc-compose-title" style="color:var(--cyan)">🤖 Auto-Monitor Berita Pemko Medan
-          <span id="pa-live-badge" style="margin-left:auto;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:${paEnabled ? 'rgba(74,222,128,.15)' : 'rgba(255,77,109,.1)'};color:${paEnabled ? '#4ade80' : '#ff8fa3'};border:1px solid ${paEnabled ? 'rgba(74,222,128,.3)' : 'rgba(255,77,109,.2)'}">
-            ${paEnabled ? '● AKTIF' : '○ NONAKTIF'}
+          <span id="pa-live-badge" style="margin-left:auto;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:${paBadgeBg};color:${paBadgeColor};border:1px solid ${paBadgeBorder}">
+            ${paBadgeText}
           </span>
         </div>
 
@@ -925,23 +946,23 @@ textarea.kg-input{resize:vertical;min-height:72px}
             🔔 Aktifkan Auto-Monitor
           </label>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <input type="checkbox" id="pa-enabled" ${paEnabled ? 'checked' : ''}
+            <input type="checkbox" id="pa-enabled" ${paEnabledChecked}
               style="width:18px;height:18px;accent-color:var(--cyan);cursor:pointer">
-            <span style="font-size:12px;color:var(--muted)" id="pa-enabled-label">${paEnabled ? 'Aktif' : 'Nonaktif'}</span>
+            <span style="font-size:12px;color:var(--muted)" id="pa-enabled-label">${paEnabledLabel}</span>
           </label>
         </div>
 
         <!-- Mode Pilihan -->
         <label class="bc-label">Mode Aksi saat Ada Berita Baru</label>
         <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <label style="flex:1;min-width:140px;background:var(--bg3);border:1px solid ${paMode==='ping' ? 'var(--cyan)' : 'var(--border2)'};border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s" id="pa-mode-ping-card">
-            <input type="radio" name="pa-mode" value="ping" id="pa-mode-ping" ${paMode==='ping' ? 'checked' : ''}
+          <label style="flex:1;min-width:140px;background:var(--bg3);border:1px solid ${paPingBorder};border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s" id="pa-mode-ping-card">
+            <input type="radio" name="pa-mode" value="ping" id="pa-mode-ping" ${paPingChecked}
               style="accent-color:var(--cyan);margin-right:8px" onchange="paModeChange()">
             <span style="font-size:13px;font-weight:600">📲 Ping Nomor</span>
             <div style="font-size:11px;color:var(--muted);margin-top:5px;margin-left:22px">Kirim notifikasi WA ke nomor admin tertentu</div>
           </label>
-          <label style="flex:1;min-width:140px;background:var(--bg3);border:1px solid ${paMode==='broadcast' ? 'var(--cyan)' : 'var(--border2)'};border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s" id="pa-mode-bc-card">
-            <input type="radio" name="pa-mode" value="broadcast" id="pa-mode-broadcast" ${paMode==='broadcast' ? 'checked' : ''}
+          <label style="flex:1;min-width:140px;background:var(--bg3);border:1px solid ${paBcBorder};border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s" id="pa-mode-bc-card">
+            <input type="radio" name="pa-mode" value="broadcast" id="pa-mode-broadcast" ${paBcChecked}
               style="accent-color:var(--cyan);margin-right:8px" onchange="paModeChange()">
             <span style="font-size:13px;font-weight:600">📢 Broadcast Saluran</span>
             <div style="font-size:11px;color:var(--muted);margin-top:5px;margin-left:22px">Kirim otomatis ke saluran WhatsApp (dengan foto)</div>
@@ -949,7 +970,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
         </div>
 
         <!-- Target Ping (nomor WA) -->
-        <div id="pa-ping-section" style="display:${paMode==='ping' ? 'block' : 'none'}">
+        <div id="pa-ping-section" style="display:${paPingDisplay}">
           <label class="bc-label">Nomor Tujuan Ping (format: 628xxx tanpa spasi/tanda)</label>
           <input type="text" id="pa-ping-jid" value="${esc(paPingJid)}"
             placeholder="628123456789"
@@ -958,7 +979,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
         </div>
 
         <!-- Target Broadcast (saluran) -->
-        <div id="pa-broadcast-section" style="display:${paMode==='broadcast' ? 'block' : 'none'}">
+        <div id="pa-broadcast-section" style="display:${paBcDisplay}">
           <label class="bc-label">Saluran Tujuan Broadcast</label>
           <select class="bc-select" id="pa-channel-jid" style="max-width:360px">
             <option value="">— Pilih saluran —</option>
@@ -969,11 +990,11 @@ textarea.kg-input{resize:vertical;min-height:72px}
         <!-- Interval -->
         <label class="bc-label">Interval Cek Berita</label>
         <select class="bc-select" id="pa-interval" style="max-width:200px">
-          <option value="15"  ${paInterval===15  ? 'selected' : ''}>Setiap 15 menit</option>
-          <option value="30"  ${paInterval===30  ? 'selected' : ''}>Setiap 30 menit</option>
-          <option value="60"  ${paInterval===60  ? 'selected' : ''}>Setiap 1 jam</option>
-          <option value="120" ${paInterval===120 ? 'selected' : ''}>Setiap 2 jam</option>
-          <option value="360" ${paInterval===360 ? 'selected' : ''}>Setiap 6 jam</option>
+          <option value="15"  ${paInt15}>Setiap 15 menit</option>
+          <option value="30"  ${paInt30}>Setiap 30 menit</option>
+          <option value="60"  ${paInt60}>Setiap 1 jam</option>
+          <option value="120" ${paInt120}>Setiap 2 jam</option>
+          <option value="360" ${paInt360}>Setiap 6 jam</option>
         </select>
 
         <!-- Tombol simpan -->
@@ -987,7 +1008,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
           <div style="font-weight:600;color:var(--text);margin-bottom:6px">📊 Status Monitor</div>
           <div>🕐 Cek terakhir: <span id="pa-last-check" style="color:var(--cyan)">${esc(paLastCheck)}</span></div>
           <div>🚀 Trigger terakhir: <span id="pa-last-trigger" style="color:#4ade80">${esc(paLastTrigger)}</span></div>
-          <div style="word-break:break-all">🔗 Berita terakhir: <a id="pa-last-url" href="${esc(paLastUrl !== '—' ? paLastUrl : '#')}" target="_blank" rel="noopener" style="color:var(--cyan);text-decoration:none">${esc(paLastUrl.length > 60 ? paLastUrl.slice(0,60)+'…' : paLastUrl)}</a></div>
+          <div style="word-break:break-all">🔗 Berita terakhir: <a id="pa-last-url" href="${paLastUrlHref}" target="_blank" rel="noopener" style="color:var(--cyan);text-decoration:none">${esc(paLastUrlShort)}</a></div>
         </div>
 
         <!-- Test manual -->

@@ -19,8 +19,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { handleMessage } from './handler.js';
-import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent } from './store.js';
+import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent, getBeritaPemkoAutoConfig, updateBeritaPemkoAutoState } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp } from './bmkg-cuaca.js';
+import { scrapePemkoBeritaArticles, downloadPemkoImageBuffer } from './medan-berita-pemko.js';
 import logger from './logger.js';
 
 // ─── Configuration ────────────────────────────────────────
@@ -81,6 +82,7 @@ let feedbackInterval = null;
 let livechatReplyInterval = null;
 let statusNotifInterval = null;
 let broadcastInterval = null;
+let beritaPemkoInterval = null;
 
 function startFeedbackWorker(sock) {
   // Bersihkan interval lama jika ada (reconnect)
@@ -341,6 +343,106 @@ function startBroadcastWorker(sock) {
   logger.info('BROADCAST', '📢 Broadcast worker aktif (poll setiap 5 detik)');
 }
 
+// ─── Worker: Automation Berita Pemko Medan ───────────────
+function startBeritaPemkoWorker(sock) {
+  if (beritaPemkoInterval) clearInterval(beritaPemkoInterval);
+
+  // Tick setiap 1 menit, lalu cek apakah sudah waktunya berdasarkan intervalMinutes
+  let lastRunAt = 0;
+
+  beritaPemkoInterval = setInterval(async () => {
+    const cfg = getBeritaPemkoAutoConfig();
+    if (!cfg.enabled) return;
+    if (!cfg.modePing && !cfg.modeBroadcast) return;
+
+    const nowMs = Date.now();
+    const intervalMs = cfg.intervalMinutes * 60_000;
+    if (nowMs - lastRunAt < intervalMs) return;
+    lastRunAt = nowMs;
+
+    const nowStr = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+    updateBeritaPemkoAutoState({ lastCheckedAt: nowStr });
+    logger.info('AUTOBERITA', `Mengecek berita baru Pemko Medan (interval: ${cfg.intervalMinutes} mnt)...`);
+
+    let articles;
+    try {
+      articles = await scrapePemkoBeritaArticles(3);
+    } catch (err) {
+      logger.warn('AUTOBERITA', 'Gagal scrape portal Pemko Medan', err.message);
+      return;
+    }
+
+    if (!articles.length) return;
+    const latest = articles[0];
+
+    // Bandingkan dengan berita terakhir yang sudah dikirim
+    if (cfg.lastSeenUrl && cfg.lastSeenUrl === latest.articleUrl) {
+      logger.info('AUTOBERITA', 'Tidak ada berita baru (URL sama)');
+      return;
+    }
+
+    logger.success('AUTOBERITA', 'Berita baru ditemukan!', latest.title);
+
+    // Simpan state berita baru
+    updateBeritaPemkoAutoState({
+      lastSeenUrl:         latest.articleUrl,
+      lastNewArticleUrl:   latest.articleUrl,
+      lastNewArticleTitle: latest.title,
+      lastNewArticleAt:    nowStr,
+    });
+
+    const pesan =
+      `🏛️ *BERITA BARU — Pemko Medan*\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `*${latest.title}*\n\n` +
+      (latest.description ? `${latest.description}\n\n` : '') +
+      `🔗 ${latest.articleUrl}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `_Notifikasi otomatis Hallo Johor_`;
+
+    // ── Mode Ping ke nomor tertentu ──
+    if (cfg.modePing && cfg.pingNumbers.length) {
+      for (const num of cfg.pingNumbers) {
+        try {
+          const jid = num.includes('@') ? num : `${num.replace(/\D/g, '')}@s.whatsapp.net`;
+          await sock.sendMessage(jid, { text: pesan });
+          logger.success('AUTOBERITA', `Ping terkirim ke ${jid}`);
+          await new Promise(r => setTimeout(r, 1500));
+        } catch (e) {
+          logger.warn('AUTOBERITA', `Gagal ping ke ${num}`, e.message);
+        }
+      }
+    }
+
+    // ── Mode Auto Broadcast ke saluran ──
+    if (cfg.modeBroadcast && cfg.channelJid) {
+      try {
+        let mediaFilename = null;
+        let mediaMime = null;
+        if (latest.imageUrl) {
+          try {
+            const { buffer, mime } = await downloadPemkoImageBuffer(latest.imageUrl);
+            mediaMime = mime;
+            const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+            const BROADCAST_MEDIA_DIR = './data/broadcast_media';
+            const { default: fs2 } = await import('fs');
+            const { default: path2 } = await import('path');
+            if (!fs2.existsSync(BROADCAST_MEDIA_DIR)) fs2.mkdirSync(BROADCAST_MEDIA_DIR, { recursive: true });
+            mediaFilename = `bc_auto_pemko_${Date.now()}.${ext}`;
+            fs2.writeFileSync(path2.join(BROADCAST_MEDIA_DIR, mediaFilename), buffer);
+          } catch { /* kirim teks saja jika gambar gagal */ }
+        }
+        queueBroadcast({ channelJid: cfg.channelJid, pesan, mediaFilename, mediaMime });
+        logger.success('AUTOBERITA', `Broadcast diantrekan ke ${cfg.channelJid}`);
+      } catch (e) {
+        logger.warn('AUTOBERITA', 'Gagal antre broadcast', e.message);
+      }
+    }
+  }, 60_000); // tick tiap 1 menit
+
+  logger.info('AUTOBERITA', '⏰ Worker automation berita Pemko Medan aktif');
+}
+
 function wibTimeParts() {
   const parts = {};
   for (const { type, value } of new Intl.DateTimeFormat('en-CA', {
@@ -501,6 +603,7 @@ async function startBot() {
       startLivechatReplyWorker(sock);
       startBroadcastWorker(sock);
       startNewsletterLookupWorker(sock);
+      startBeritaPemkoWorker(sock);
     }
 
     if (connection === 'close') {

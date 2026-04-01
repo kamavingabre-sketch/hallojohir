@@ -19,8 +19,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { handleMessage } from './handler.js';
-import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent } from './store.js';
+import { getPendingFeedbacks, markFeedbackDone, getPendingLivechatReplies, markLivechatReplyDone, addLivechatMessage, closeLivechatSession, getPendingStatusNotifs, markStatusNotifDone, getPendingBroadcasts, markBroadcastDone, queueBroadcast, getWeatherBroadcastConfig, markWeatherBroadcastSent, getPemkoAutomationConfig, markPemkoAutomationChecked, markPemkoAutomationTriggered } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp } from './bmkg-cuaca.js';
+import { scrapePemkoBeritaArticles, downloadPemkoImageBuffer } from './medan-berita-pemko.js';
 import logger from './logger.js';
 
 // ─── Configuration ────────────────────────────────────────
@@ -81,6 +82,7 @@ let feedbackInterval = null;
 let livechatReplyInterval = null;
 let statusNotifInterval = null;
 let broadcastInterval = null;
+let pemkoAutomationInterval = null;
 
 function startFeedbackWorker(sock) {
   // Bersihkan interval lama jika ada (reconnect)
@@ -357,6 +359,106 @@ function wibTimeParts() {
   return parts;
 }
 
+// ─── Pemko Berita Automation Scheduler ───────────────────
+// Cek berita baru di portal.medan.go.id/berita setiap N menit.
+// Jika ada berita baru (URL berbeda dari lastSeenUrl):
+//   mode=ping      → kirim notifikasi WA ke nomor admin
+//   mode=broadcast → antrikan broadcast ke saluran (dengan foto)
+function startPemkoAutomationScheduler(sock) {
+  if (pemkoAutomationInterval) clearInterval(pemkoAutomationInterval);
+
+  // Interval cek minimal setiap 1 menit — scheduler sendiri yang
+  // memutuskan apakah sudah waktunya berdasarkan intervalMinutes di config.
+  pemkoAutomationInterval = setInterval(async () => {
+    let cfg;
+    try { cfg = getPemkoAutomationConfig(); } catch { return; }
+    if (!cfg.enabled) return;
+
+    // Hitung apakah sudah lewat intervalMinutes sejak lastCheckedAt
+    if (cfg.lastCheckedAt) {
+      const elapsed = (Date.now() - new Date(cfg.lastCheckedAt).getTime()) / 60_000;
+      if (elapsed < cfg.intervalMinutes) return;
+    }
+
+    try {
+      const articles = await scrapePemkoBeritaArticles(1);
+      if (!articles.length) {
+        markPemkoAutomationChecked(cfg.lastSeenUrl); // perbarui waktu cek
+        return;
+      }
+
+      const latest = articles[0];
+
+      // Tidak ada berita baru
+      if (latest.articleUrl === cfg.lastSeenUrl) {
+        markPemkoAutomationChecked(cfg.lastSeenUrl);
+        logger.info('PEMKO-AUTO', `Tidak ada berita baru. Cek berikutnya dalam ${cfg.intervalMinutes} menit.`);
+        return;
+      }
+
+      logger.success('PEMKO-AUTO', `Berita baru ditemukan!`, latest.title);
+
+      if (cfg.mode === 'ping') {
+        // ── Mode Ping: kirim notifikasi ke nomor tertentu ──
+        const jid = cfg.pingJid.includes('@') ? cfg.pingJid : `${cfg.pingJid}@s.whatsapp.net`;
+        const text =
+          `🏛️ *BERITA BARU — PEMKO MEDAN*\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+          `📰 *${latest.title}*\n\n` +
+          `${latest.description ? latest.description + '\n\n' : ''}` +
+          `🔗 ${latest.articleUrl}\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `_Notifikasi otomatis Hallo Johor • portal.medan.go.id_`;
+        await sock.sendMessage(jid, { text });
+        logger.success('PEMKO-AUTO', `Ping terkirim → ${jid}`);
+
+      } else if (cfg.mode === 'broadcast') {
+        // ── Mode Broadcast: antrikan ke saluran ──
+        if (!cfg.channelJid) {
+          logger.warn('PEMKO-AUTO', 'channelJid belum diset, broadcast dibatalkan');
+        } else {
+          const pesan =
+            `🏛️ *BERITA TERBARU — PEMKO MEDAN*\n\n` +
+            `📰 *${latest.title}*\n\n` +
+            `${latest.description ? latest.description + '\n\n' : ''}` +
+            `🔗 ${latest.articleUrl}\n\n` +
+            `_portal.medan.go.id • #MedanUntukSemua_`;
+
+          let mediaFilename = null;
+          let mediaMime = null;
+          if (latest.imageUrl) {
+            try {
+              const { buffer, mime } = await downloadPemkoImageBuffer(latest.imageUrl);
+              mediaMime = mime;
+              const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+              mediaFilename = `auto_pemko_${Date.now()}.${ext}`;
+              const mediaDirAbs = path.join(__dirname, 'data', 'broadcast_media');
+              if (!fs.existsSync(mediaDirAbs)) fs.mkdirSync(mediaDirAbs, { recursive: true });
+              fs.writeFileSync(path.join(mediaDirAbs, mediaFilename), buffer);
+            } catch (imgErr) {
+              logger.warn('PEMKO-AUTO', 'Gagal download foto berita, fallback ke teks', imgErr.message);
+              mediaFilename = null;
+              mediaMime = null;
+            }
+          }
+
+          queueBroadcast({ channelJid: cfg.channelJid, pesan, mediaFilename, mediaMime });
+          logger.success('PEMKO-AUTO', `Broadcast diantrekan → ${cfg.channelJid}`);
+        }
+      }
+
+      markPemkoAutomationTriggered(latest.articleUrl);
+
+    } catch (err) {
+      logger.warn('PEMKO-AUTO', 'Gagal cek berita Pemko', err.message);
+      // Tetap perbarui lastCheckedAt agar tidak langsung retry
+      try { markPemkoAutomationChecked(getPemkoAutomationConfig().lastSeenUrl); } catch {}
+    }
+  }, 60_000); // cek kondisi setiap 60 detik
+
+  logger.info('PEMKO-AUTO', '🤖 Pemko Berita Automation scheduler aktif');
+}
+
 /** Antrian teks prakiraan BMKG setiap hari ±00:00 WIB (jendela menit ke-0–12, cek tiap ~40 dtk). */
 function startWeatherScheduler() {
   let busy = false;
@@ -501,6 +603,7 @@ async function startBot() {
       startLivechatReplyWorker(sock);
       startBroadcastWorker(sock);
       startNewsletterLookupWorker(sock);
+      startPemkoAutomationScheduler(sock);
     }
 
     if (connection === 'close') {

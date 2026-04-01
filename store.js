@@ -542,3 +542,57 @@ export const markWeatherBroadcastSent = (wibYmd) => {
     lastSentDate: wibYmd,
   });
 };
+
+// ── Automation: Berita Pemko Medan ────────────────────────
+// mode: 'ping' | 'broadcast'
+// pingJid: nomor WA tujuan ping (format: 628xxx@s.whatsapp.net)
+// channelJid: JID saluran tujuan broadcast
+// intervalMinutes: interval cek dalam menit (15 | 30 | 60 | 120)
+// lastSeenUrl: URL artikel terakhir yang sudah diproses
+export const getPemkoAutomationConfig = () => {
+  const d = readJSON('pemko_automation.json');
+  return {
+    enabled:         !!d.enabled,
+    mode:            d.mode || 'ping',          // 'ping' | 'broadcast'
+    pingJid:         (d.pingJid || '').trim(),
+    channelJid:      (d.channelJid || '').trim(),
+    intervalMinutes: d.intervalMinutes || 30,
+    lastSeenUrl:     d.lastSeenUrl || null,
+    lastCheckedAt:   d.lastCheckedAt || null,
+    lastTriggeredAt: d.lastTriggeredAt || null,
+  };
+};
+
+export const setPemkoAutomationConfig = (cfg) => {
+  const prev = readJSON('pemko_automation.json');
+  writeJSON('pemko_automation.json', {
+    ...prev,
+    enabled:         typeof cfg.enabled === 'boolean' ? cfg.enabled : prev.enabled,
+    mode:            cfg.mode            ?? prev.mode            ?? 'ping',
+    pingJid:         cfg.pingJid         !== undefined ? (cfg.pingJid || '').trim()    : (prev.pingJid || ''),
+    channelJid:      cfg.channelJid      !== undefined ? (cfg.channelJid || '').trim() : (prev.channelJid || ''),
+    intervalMinutes: cfg.intervalMinutes ?? prev.intervalMinutes ?? 30,
+    lastSeenUrl:     cfg.lastSeenUrl     !== undefined ? cfg.lastSeenUrl    : (prev.lastSeenUrl || null),
+    lastCheckedAt:   cfg.lastCheckedAt   !== undefined ? cfg.lastCheckedAt  : (prev.lastCheckedAt || null),
+    lastTriggeredAt: cfg.lastTriggeredAt !== undefined ? cfg.lastTriggeredAt: (prev.lastTriggeredAt || null),
+  });
+};
+
+export const markPemkoAutomationChecked = (latestUrl) => {
+  const prev = readJSON('pemko_automation.json');
+  writeJSON('pemko_automation.json', {
+    ...prev,
+    lastSeenUrl:   latestUrl,
+    lastCheckedAt: new Date().toISOString(),
+  });
+};
+
+export const markPemkoAutomationTriggered = (articleUrl) => {
+  const prev = readJSON('pemko_automation.json');
+  writeJSON('pemko_automation.json', {
+    ...prev,
+    lastSeenUrl:     articleUrl,
+    lastCheckedAt:   new Date().toISOString(),
+    lastTriggeredAt: new Date().toISOString(),
+  });
+};

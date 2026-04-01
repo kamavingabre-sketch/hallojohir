@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getPemkoAutomationConfig, setPemkoAutomationConfig } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
@@ -151,7 +151,7 @@ input:focus{border-color:#0090c8;box-shadow:0 0 0 3px rgba(0,200,255,.1)}
   <p class="foot">Kecamatan Medan Johor — Sistem Pengaduan Digital</p>
 </div></body></html>`;
 
-const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}) => {
+const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}, pemkoAutomation = {}) => {
   const total = laporan.length;
   const now = new Date();
   const today = laporan.filter(l => new Date(l.tanggal).toDateString() === now.toDateString()).length;
@@ -290,14 +290,29 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
       ).join('')
     : '';
 
+  // ── Pemko Automation template vars ──
+  const paEnabled  = !!pemkoAutomation.enabled;
+  const paMode     = pemkoAutomation.mode || 'ping';
+  const paPingJid  = (pemkoAutomation.pingJid || '').replace('@s.whatsapp.net','');
+  const paChSel    = (pemkoAutomation.channelJid || '').trim();
+  const paInterval = pemkoAutomation.intervalMinutes || 30;
+  const paLastCheck   = pemkoAutomation.lastCheckedAt   ? new Date(pemkoAutomation.lastCheckedAt).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'})   : '—';
+  const paLastTrigger = pemkoAutomation.lastTriggeredAt ? new Date(pemkoAutomation.lastTriggeredAt).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) : '—';
+  const paLastUrl  = pemkoAutomation.lastSeenUrl || '—';
+  const paChOpts   = bcChannels.length
+    ? bcChannels.map(c =>
+        `<option value="${esc(c.jid)}"${paChSel === c.jid ? ' selected' : ''}>${esc(c.name)} (${esc(c.jid.split('@')[0])}…)</option>`
+      ).join('')
+    : `<option value="" disabled>— Belum ada saluran terdaftar —</option>`;
+
   return `<!DOCTYPE html>
 <html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dashboard — Hallo Johor Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
 <script>
-const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',panduan:'Panduan'};
+const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','automation','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',automation:'Automation',panduan:'Panduan'};
 function showSec(id,el){
   document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on',s.id==='sec-'+id));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
@@ -549,6 +564,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
     <div class="ni" onclick="showSec('livechat',this)"><span class="ic">💬</span> LiveChat <span id="lc-unread-badge" style="display:none;margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px"></span></div>
     <div class="ni" onclick="showSec('kegiatan',this)"><span class="ic">🎪</span> Kegiatan</div>
     <div class="ni" onclick="showSec('broadcast',this)"><span class="ic">📢</span> Broadcast</div>
+    <div class="ni" onclick="showSec('automation',this)"><span class="ic">🤖</span> Automation</div>
     <div class="ni" onclick="showSec('grup',this)"><span class="ic">📡</span> Grup WhatsApp</div>
     <div class="nav-sec">Info</div>
     <div class="ni" onclick="showSec('panduan',this)"><span class="ic">📖</span> Panduan</div>
@@ -881,6 +897,105 @@ textarea.kg-input{resize:vertical;min-height:72px}
           <thead><tr><th>Status</th><th>Saluran</th><th>Pesan</th><th>Media</th><th>Waktu</th></tr></thead>
           <tbody id="bc-hist-tbody">${bcHistRows}</tbody>
         </table></div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-automation">
+      <div class="sec-title">Automation</div>
+      <div class="sec-sub">Monitor berita baru Pemko Medan dan kirim notifikasi atau broadcast otomatis</div>
+
+      <!-- ─ Automation: Berita Pemko Medan ─ -->
+      <div class="bc-compose" style="border-color:rgba(34,211,238,.2)">
+        <div class="bc-compose-title" style="color:var(--cyan)">🤖 Auto-Monitor Berita Pemko Medan
+          <span id="pa-live-badge" style="margin-left:auto;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:${paEnabled ? 'rgba(74,222,128,.15)' : 'rgba(255,77,109,.1)'};color:${paEnabled ? '#4ade80' : '#ff8fa3'};border:1px solid ${paEnabled ? 'rgba(74,222,128,.3)' : 'rgba(255,77,109,.2)'}">
+            ${paEnabled ? '● AKTIF' : '○ NONAKTIF'}
+          </span>
+        </div>
+
+        <p style="font-size:12px;color:var(--text2);margin:0 0 18px;line-height:1.7">
+          Bot akan mengecek berita terbaru di
+          <a href="https://portal.medan.go.id/berita" target="_blank" rel="noopener" style="color:var(--cyan)">portal.medan.go.id/berita</a>
+          setiap interval yang dipilih. Jika ada berita baru, bot akan mengirim <b>ping</b> ke nomor admin
+          atau langsung <b>broadcast</b> ke saluran WhatsApp.
+        </p>
+
+        <!-- Toggle ON/OFF -->
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:14px 16px">
+          <label class="bc-label" style="margin:0;flex:1;font-size:12px;color:var(--text)">
+            🔔 Aktifkan Auto-Monitor
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="pa-enabled" ${paEnabled ? 'checked' : ''}
+              style="width:18px;height:18px;accent-color:var(--cyan);cursor:pointer">
+            <span style="font-size:12px;color:var(--muted)" id="pa-enabled-label">${paEnabled ? 'Aktif' : 'Nonaktif'}</span>
+          </label>
+        </div>
+
+        <!-- Mode Pilihan -->
+        <label class="bc-label">Mode Aksi saat Ada Berita Baru</label>
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <label style="flex:1;min-width:140px;background:var(--bg3);border:1px solid ${paMode==='ping' ? 'var(--cyan)' : 'var(--border2)'};border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s" id="pa-mode-ping-card">
+            <input type="radio" name="pa-mode" value="ping" id="pa-mode-ping" ${paMode==='ping' ? 'checked' : ''}
+              style="accent-color:var(--cyan);margin-right:8px" onchange="paModeChange()">
+            <span style="font-size:13px;font-weight:600">📲 Ping Nomor</span>
+            <div style="font-size:11px;color:var(--muted);margin-top:5px;margin-left:22px">Kirim notifikasi WA ke nomor admin tertentu</div>
+          </label>
+          <label style="flex:1;min-width:140px;background:var(--bg3);border:1px solid ${paMode==='broadcast' ? 'var(--cyan)' : 'var(--border2)'};border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s" id="pa-mode-bc-card">
+            <input type="radio" name="pa-mode" value="broadcast" id="pa-mode-broadcast" ${paMode==='broadcast' ? 'checked' : ''}
+              style="accent-color:var(--cyan);margin-right:8px" onchange="paModeChange()">
+            <span style="font-size:13px;font-weight:600">📢 Broadcast Saluran</span>
+            <div style="font-size:11px;color:var(--muted);margin-top:5px;margin-left:22px">Kirim otomatis ke saluran WhatsApp (dengan foto)</div>
+          </label>
+        </div>
+
+        <!-- Target Ping (nomor WA) -->
+        <div id="pa-ping-section" style="display:${paMode==='ping' ? 'block' : 'none'}">
+          <label class="bc-label">Nomor Tujuan Ping (format: 628xxx tanpa spasi/tanda)</label>
+          <input type="text" id="pa-ping-jid" value="${esc(paPingJid)}"
+            placeholder="628123456789"
+            class="bc-ch-input" style="width:100%;max-width:340px;margin-bottom:14px"
+          >
+        </div>
+
+        <!-- Target Broadcast (saluran) -->
+        <div id="pa-broadcast-section" style="display:${paMode==='broadcast' ? 'block' : 'none'}">
+          <label class="bc-label">Saluran Tujuan Broadcast</label>
+          <select class="bc-select" id="pa-channel-jid" style="max-width:360px">
+            <option value="">— Pilih saluran —</option>
+            ${paChOpts}
+          </select>
+        </div>
+
+        <!-- Interval -->
+        <label class="bc-label">Interval Cek Berita</label>
+        <select class="bc-select" id="pa-interval" style="max-width:200px">
+          <option value="15"  ${paInterval===15  ? 'selected' : ''}>Setiap 15 menit</option>
+          <option value="30"  ${paInterval===30  ? 'selected' : ''}>Setiap 30 menit</option>
+          <option value="60"  ${paInterval===60  ? 'selected' : ''}>Setiap 1 jam</option>
+          <option value="120" ${paInterval===120 ? 'selected' : ''}>Setiap 2 jam</option>
+          <option value="360" ${paInterval===360 ? 'selected' : ''}>Setiap 6 jam</option>
+        </select>
+
+        <!-- Tombol simpan -->
+        <button class="bc-send-btn" style="margin-top:4px;background:linear-gradient(135deg,#0e7490,#06b6d4)" onclick="savePemkoAutomation()">
+          💾 Simpan Pengaturan Automation
+        </button>
+        <div id="pa-save-status" class="bc-ch-status" style="display:none;margin-top:10px"></div>
+
+        <!-- Status terakhir -->
+        <div style="margin-top:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;font-size:12px;color:var(--text2);line-height:2">
+          <div style="font-weight:600;color:var(--text);margin-bottom:6px">📊 Status Monitor</div>
+          <div>🕐 Cek terakhir: <span id="pa-last-check" style="color:var(--cyan)">${esc(paLastCheck)}</span></div>
+          <div>🚀 Trigger terakhir: <span id="pa-last-trigger" style="color:#4ade80">${esc(paLastTrigger)}</span></div>
+          <div style="word-break:break-all">🔗 Berita terakhir: <a id="pa-last-url" href="${esc(paLastUrl !== '—' ? paLastUrl : '#')}" target="_blank" rel="noopener" style="color:var(--cyan);text-decoration:none">${esc(paLastUrl.length > 60 ? paLastUrl.slice(0,60)+'…' : paLastUrl)}</a></div>
+        </div>
+
+        <!-- Test manual -->
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="ref-btn" onclick="paPreviewLatest()">👁️ Lihat Berita Terbaru Sekarang</button>
+          <button class="ref-btn" onclick="paResetLastUrl()">🔄 Reset URL Terakhir (paksa trigger berikutnya)</button>
+        </div>
+        <div id="pa-preview-box" style="display:none;margin-top:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:14px;font-size:12px;color:var(--text2);line-height:1.8"></div>
       </div>
     </div>
 
@@ -2233,6 +2348,111 @@ async function refreshBcHistory() {
     sel.value = cur;
   } catch(e) { console.error('refreshBcHistory error:', e); }
 }
+
+// ══════════════════════════════════════════════
+//   AUTOMATION — Pemko Berita
+// ══════════════════════════════════════════════
+
+function paModeChange() {
+  const mode = document.querySelector('input[name="pa-mode"]:checked')?.value;
+  document.getElementById('pa-ping-section').style.display      = mode === 'ping'      ? 'block' : 'none';
+  document.getElementById('pa-broadcast-section').style.display = mode === 'broadcast' ? 'block' : 'none';
+  // Update card border highlight
+  document.getElementById('pa-mode-ping-card').style.borderColor      = mode === 'ping'      ? 'var(--cyan)' : 'var(--border2)';
+  document.getElementById('pa-mode-bc-card').style.borderColor        = mode === 'broadcast' ? 'var(--cyan)' : 'var(--border2)';
+}
+
+// Update label toggle aktif/nonaktif real-time
+document.getElementById('pa-enabled').addEventListener('change', function() {
+  document.getElementById('pa-enabled-label').textContent = this.checked ? 'Aktif' : 'Nonaktif';
+  const badge = document.getElementById('pa-live-badge');
+  if (this.checked) {
+    badge.textContent = '● AKTIF';
+    badge.style.background = 'rgba(74,222,128,.15)';
+    badge.style.color = '#4ade80';
+    badge.style.borderColor = 'rgba(74,222,128,.3)';
+  } else {
+    badge.textContent = '○ NONAKTIF';
+    badge.style.background = 'rgba(255,77,109,.1)';
+    badge.style.color = '#ff8fa3';
+    badge.style.borderColor = 'rgba(255,77,109,.2)';
+  }
+});
+
+async function savePemkoAutomation() {
+  const st  = document.getElementById('pa-save-status');
+  const enabled   = document.getElementById('pa-enabled').checked;
+  const mode      = document.querySelector('input[name="pa-mode"]:checked')?.value || 'ping';
+  const pingRaw   = document.getElementById('pa-ping-jid').value.trim().replace(/[^0-9]/g,'');
+  const pingJid   = pingRaw ? (pingRaw.startsWith('62') ? pingRaw : '62' + pingRaw.replace(/^0/,'')) : '';
+  const channelJid= (document.getElementById('pa-channel-jid')?.value || '').trim();
+  const intervalMinutes = parseInt(document.getElementById('pa-interval').value, 10) || 30;
+
+  if (enabled && mode === 'ping' && !pingJid) {
+    st.textContent = '⚠️ Masukkan nomor tujuan ping terlebih dahulu.';
+    st.className = 'bc-ch-status err'; st.style.display = 'block'; return;
+  }
+  if (enabled && mode === 'broadcast' && !channelJid) {
+    st.textContent = '⚠️ Pilih saluran tujuan broadcast terlebih dahulu.';
+    st.className = 'bc-ch-status err'; st.style.display = 'block'; return;
+  }
+
+  st.textContent = '⏳ Menyimpan...'; st.className = 'bc-ch-status ok'; st.style.display = 'block';
+  try {
+    const res = await fetch('/api/pemko-automation/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, mode, pingJid, channelJid, intervalMinutes }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal menyimpan');
+    st.textContent = '✅ Pengaturan disimpan! Automation ' + (enabled ? 'diaktifkan.' : 'dinonaktifkan.');
+  } catch(e) {
+    st.textContent = '❌ ' + e.message;
+    st.className = 'bc-ch-status err';
+  }
+}
+
+async function paPreviewLatest() {
+  const box = document.getElementById('pa-preview-box');
+  box.style.display = 'block';
+  box.innerHTML = '⏳ Mengambil berita terbaru dari portal Pemko Medan...';
+  try {
+    const res  = await fetch('/api/pemko-berita?limit=1');
+    const json = await res.json();
+    if (!json.ok || !json.items.length) throw new Error(json.error || 'Tidak ada berita');
+    const art = json.items[0];
+    box.innerHTML =
+      '<div style="display:flex;gap:14px;align-items:flex-start">' +
+      (art.imageUrl ? '<img src="' + art.imageUrl + '" style="width:80px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);flex-shrink:0" onerror="this.style.display=\'none\'">' : '') +
+      '<div>' +
+      '<div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:5px">' + esc(art.title) + '</div>' +
+      '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.6">' + esc(art.description ? art.description.substring(0,160)+'…' : '') + '</div>' +
+      '<a href="' + art.articleUrl + '" target="_blank" rel="noopener" style="color:var(--cyan);font-size:11px">' + art.articleUrl + '</a>' +
+      '</div></div>';
+  } catch(e) {
+    box.innerHTML = '❌ ' + e.message;
+  }
+}
+
+async function paResetLastUrl() {
+  if (!confirm('Reset URL terakhir? Berita berikutnya yang ditemukan akan langsung memicu aksi (ping/broadcast).')) return;
+  const st = document.getElementById('pa-save-status');
+  st.style.display = 'block';
+  st.className = 'bc-ch-status ok';
+  st.textContent = '⏳ Mereset...';
+  try {
+    const res = await fetch('/api/pemko-automation/reset-url', { method: 'POST' });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    document.getElementById('pa-last-url').textContent = '—';
+    document.getElementById('pa-last-url').href = '#';
+    st.textContent = '✅ URL terakhir direset. Berita baru berikutnya akan memicu aksi.';
+  } catch(e) {
+    st.className = 'bc-ch-status err';
+    st.textContent = '❌ ' + e.message;
+  }
+}
 <\/script></body></html>`;
 };
 
@@ -2342,7 +2562,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig()));
+  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig(), getPemkoAutomationConfig()));
   if (path_ === '/api/laporan') return send(200, JSON.stringify(getLaporan()), 'application/json');
 
   // ── API: Tambah Grup ──
@@ -3206,6 +3426,48 @@ function copyIt() {
         queued: ids.length,
         ids,
       }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Pemko Automation Config ─────────────────────────
+  if (path_ === '/api/pemko-automation/config' && req.method === 'GET') {
+    try {
+      return send(200, JSON.stringify({ ok: true, ...getPemkoAutomationConfig() }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/pemko-automation/config' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const enabled         = typeof body.enabled === 'boolean' ? body.enabled : false;
+      const mode            = ['ping','broadcast'].includes(body.mode) ? body.mode : 'ping';
+      const pingJid         = (body.pingJid || '').trim();
+      const channelJid      = (body.channelJid || '').trim();
+      const intervalMinutes = [15,30,60,120,360].includes(Number(body.intervalMinutes))
+                              ? Number(body.intervalMinutes) : 30;
+
+      if (enabled && mode === 'ping' && !pingJid) {
+        return send(400, JSON.stringify({ ok: false, error: 'pingJid diperlukan untuk mode ping' }), 'application/json');
+      }
+      if (enabled && mode === 'broadcast' && !channelJid) {
+        return send(400, JSON.stringify({ ok: false, error: 'channelJid diperlukan untuk mode broadcast' }), 'application/json');
+      }
+
+      setPemkoAutomationConfig({ enabled, mode, pingJid, channelJid, intervalMinutes });
+      return send(200, JSON.stringify({ ok: true }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  if (path_ === '/api/pemko-automation/reset-url' && req.method === 'POST') {
+    try {
+      setPemkoAutomationConfig({ lastSeenUrl: null });
+      return send(200, JSON.stringify({ ok: true }), 'application/json');
     } catch (err) {
       return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
     }

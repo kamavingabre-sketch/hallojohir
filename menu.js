@@ -413,8 +413,20 @@ Sistem keamanan lingkungan yang melibatkan seluruh warga untuk merespons ganggua
 Pendampingan dan pelatihan bagi pelaku usaha mikro, kecil, dan menengah di wilayah Kecamatan Medan Johor.
 Ketik *12* di menu utama untuk melihat direktori lengkap UMKM binaan.
 
-🕌 *PROGRAM KEAGAMAAN KECAMATAN*
-Kegiatan Safari Jumat, pengajian akbar, dan kegiatan keagamaan rutin lintas kelurahan.
+🕌 *SAHABAT JUMAT*
+_(Silaturahmi dan Aspirasi Bersama Aparatur Johor untuk Ummat)_
+_"Dengar Umat, Gerak Cepat."_
+
+Program kehadiran langsung Camat dan jajaran aparatur kecamatan secara bergilir di masjid-masjid se-Kecamatan Medan Johor setiap hari Jumat — menyerap aspirasi warga secara langsung, humanis, dan ditindaklanjuti secara cepat dan terukur.
+
+📌 *Fokus aspirasi:*
+› Kebersihan & sampah
+› Keamanan lingkungan
+› Infrastruktur
+› Pelayanan administrasi
+› Program sosial keagamaan
+
+⚡ Setiap aspirasi direkap mingguan dan ditindaklanjuti dalam ≤14 hari.
 
 📚 *PINTAR JOHOR*
 (Perpustakaan Interaktif Digital Rakyat Johor)

@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getPemkoAutomationConfig, setPemkoAutomationConfig } from './store.js';
+import { queueFeedback, getLivechatSessions, addLivechatMessage, closeLivechatSessionById, markLivechatRead, queueLivechatReply, addLaporanGroup, removeLaporanGroup, getGroupRouting, setGroupRouting, deleteLaporan, updateLaporanStatus, getLaporanById, queueStatusNotif, getKegiatan, addKegiatan, deleteKegiatan, queueBroadcast, getBroadcastHistory, getBroadcastChannels, addBroadcastChannel, removeBroadcastChannel, getWeatherBroadcastConfig, setWeatherBroadcastConfig, getPemkoAutomationConfig, setPemkoAutomationConfig, getUmkm, addUmkm, updateUmkm, deleteUmkm } from './store.js';
 import { scrapeMedanJohorCuacaHariIni, formatCuacaWhatsApp, BMKG_MEDAN_JOHOR_URL } from './bmkg-cuaca.js';
 import { KATEGORI_PENGADUAN } from './menu.js';
 import { scrapeMedanBeritaArticles, downloadImageBuffer } from './medan-berita.js';
@@ -151,7 +151,7 @@ input:focus{border-color:#0090c8;box-shadow:0 0 0 3px rgba(0,200,255,.1)}
   <p class="foot">Kecamatan Medan Johor — Sistem Pengaduan Digital</p>
 </div></body></html>`;
 
-const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}, pemkoAutomation = {}) => {
+const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels = [], bcHistory = [], weatherSchedule = {}, pemkoAutomation = {}, umkmList = []) => {
   const total = laporan.length;
   const now = new Date();
   const today = laporan.filter(l => new Date(l.tanggal).toDateString() === now.toDateString()).length;
@@ -249,6 +249,27 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
     </div>`).join('') :
     `<div class="kg-empty"><div class="ico">📭</div>Belum ada kegiatan. Tambahkan melalui form di atas.</div>`;
 
+  // ── UMKM cards ──
+  const umkmCards = umkmList.length ? umkmList.map(u => `
+    <div class="umkm-card" id="umkmcard-${esc(u.id)}">
+      <div class="umkm-card-ico">🏪</div>
+      <div class="umkm-card-body">
+        <div class="umkm-card-name">${esc(u.nama)}</div>
+        <div class="umkm-card-meta">
+          ${u.kategori ? `<span class="umkm-chip">🏷️ ${esc(u.kategori)}</span>` : ''}
+        </div>
+        <div class="umkm-card-detail">
+          ${u.alamat  ? `📍 ${esc(u.alamat)}<br>` : ''}
+          ${u.kontak  ? `📱 ${esc(u.kontak)}<br>` : ''}
+          ${u.mapsUrl ? `🗺️ <a href="${esc(u.mapsUrl)}" target="_blank" rel="noopener">Buka Google Maps</a>` : ''}
+        </div>
+      </div>
+      <div class="umkm-card-actions">
+        <button class="umkm-del-btn" onclick="deleteUmkm('${esc(u.id)}',this)">🗑️ Hapus</button>
+      </div>
+    </div>`).join('') :
+    `<div class="umkm-empty"><div class="ico">📭</div>Belum ada data UMKM. Tambahkan melalui form di atas.</div>`;
+
   // ── Broadcast: channel rows & history ──
   const bcChannelRows = bcChannels.length ? bcChannels.map(c => `
     <tr>
@@ -332,8 +353,8 @@ const pageDashboard = (laporan, groups, routing = {}, kegiatan = [], bcChannels 
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
 <script>
-const sections=['overview','laporan','grup','livechat','kegiatan','broadcast','automation','panduan'];
-const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',broadcast:'Broadcast Saluran',automation:'Automation',panduan:'Panduan'};
+const sections=['overview','laporan','grup','livechat','kegiatan','umkm','broadcast','automation','panduan'];
+const titles={overview:'Overview',laporan:'Semua Laporan',grup:'Grup WhatsApp',livechat:'LiveChat Admin',kegiatan:'Kegiatan Kecamatan',umkm:'UMKM Binaan',broadcast:'Broadcast Saluran',automation:'Automation',panduan:'Panduan'};
 function showSec(id,el){
   document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on',s.id==='sec-'+id));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
@@ -529,6 +550,35 @@ textarea.kg-input{resize:vertical;min-height:72px}
 .kg-del-btn:hover{background:rgba(255,77,109,.18)}
 .kg-empty{text-align:center;padding:48px 24px;color:var(--muted);font-size:13px}
 .kg-empty .ico{font-size:36px;margin-bottom:10px}
+/* ── UMKM Binaan ── */
+.umkm-form{background:var(--card);border:1px solid var(--border);border-radius:15px;padding:22px 24px;margin-bottom:18px}
+.umkm-form-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#f59e0b;margin-bottom:14px}
+.umkm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.umkm-full{grid-column:1/-1}
+.umkm-label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.umkm-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color .2s;box-sizing:border-box}
+.umkm-input:focus{border-color:#f59e0b}
+.umkm-add-btn{background:linear-gradient(135deg,#d97706,#f59e0b);border:none;border-radius:8px;padding:9px 20px;color:#040d1a;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .2s;margin-top:4px}
+.umkm-add-btn:hover{opacity:.85}
+.umkm-status{font-size:12px;margin-top:10px;border-radius:7px;padding:7px 12px;display:none}
+.umkm-status.ok{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:#f59e0b;display:block}
+.umkm-status.err{background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.25);color:#ff8fa3;display:block}
+.umkm-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;animation:fi .3s ease both}
+.umkm-card-ico{font-size:26px;flex-shrink:0;margin-top:2px}
+.umkm-card-body{flex:1;min-width:0}
+.umkm-card-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;margin-bottom:5px}
+.umkm-card-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.umkm-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:20px;padding:2px 9px;font-size:11px;color:#f59e0b}
+.umkm-card-detail{font-size:12px;color:var(--text2);line-height:1.8}
+.umkm-card-detail a{color:var(--cyan);text-decoration:none}
+.umkm-card-detail a:hover{text-decoration:underline}
+.umkm-card-actions{display:flex;gap:6px;flex-shrink:0;flex-direction:column}
+.umkm-del-btn{background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.18);border-radius:7px;color:#ff8fa3;font-size:11px;padding:5px 10px;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif}
+.umkm-del-btn:hover{background:rgba(255,77,109,.18)}
+.umkm-empty{text-align:center;padding:48px 24px;color:var(--muted);font-size:13px}
+.umkm-empty .ico{font-size:36px;margin-bottom:10px}
+.umkm-search{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;margin-bottom:14px;box-sizing:border-box;transition:border-color .2s}
+.umkm-search:focus{border-color:#f59e0b}
 /* ── Broadcast ── */
 .bc-compose{background:var(--card);border:1px solid var(--border);border-radius:15px;padding:24px;margin-bottom:18px}
 .bc-compose-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--cyan);margin-bottom:16px;display:flex;align-items:center;gap:8px}
@@ -584,6 +634,7 @@ textarea.kg-input{resize:vertical;min-height:72px}
     <div class="nav-sec">Manajemen</div>
     <div class="ni" onclick="showSec('livechat',this)"><span class="ic">💬</span> LiveChat <span id="lc-unread-badge" style="display:none;margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px"></span></div>
     <div class="ni" onclick="showSec('kegiatan',this)"><span class="ic">🎪</span> Kegiatan</div>
+    <div class="ni" onclick="showSec('umkm',this)"><span class="ic">🏪</span> UMKM Binaan</div>
     <div class="ni" onclick="showSec('broadcast',this)"><span class="ic">📢</span> Broadcast</div>
     <div class="ni" onclick="showSec('automation',this)"><span class="ic">🤖</span> Automation</div>
     <div class="ni" onclick="showSec('grup',this)"><span class="ic">📡</span> Grup WhatsApp</div>
@@ -736,6 +787,54 @@ textarea.kg-input{resize:vertical;min-height:72px}
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Data ini ditampilkan langsung ke warga saat memilih Menu 3 di WhatsApp Bot.</div>
         <div id="kg-list">${kegiatanCards}</div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- SECTION: UMKM Binaan                              -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <div class="sec" id="sec-umkm">
+      <div class="sec-title">UMKM Binaan Kecamatan Medan Johor</div>
+      <div class="sec-sub">Kelola direktori UMKM binaan yang tampil di Menu 12 WhatsApp Bot</div>
+
+      <!-- Form Tambah UMKM -->
+      <div class="umkm-form">
+        <div class="umkm-form-title">➕ Tambah UMKM Baru</div>
+        <div class="umkm-grid">
+          <div class="umkm-full">
+            <label class="umkm-label">Nama UMKM *</label>
+            <input class="umkm-input" id="umkm-nama" placeholder="Contoh: Warung Makan Bu Siti" />
+          </div>
+          <div>
+            <label class="umkm-label">Kategori Usaha</label>
+            <input class="umkm-input" id="umkm-kategori" placeholder="Contoh: Kuliner, Fashion, Jasa..." />
+          </div>
+          <div>
+            <label class="umkm-label">Kontak / No. HP</label>
+            <input class="umkm-input" id="umkm-kontak" placeholder="Contoh: 0812-3456-7890" />
+          </div>
+          <div class="umkm-full">
+            <label class="umkm-label">Alamat Lengkap</label>
+            <input class="umkm-input" id="umkm-alamat" placeholder="Contoh: Jl. Karya Wisata No. 10, Pangkalan Masyhur" />
+          </div>
+          <div class="umkm-full">
+            <label class="umkm-label">Link Google Maps</label>
+            <input class="umkm-input" id="umkm-maps" placeholder="https://maps.app.goo.gl/..." />
+          </div>
+        </div>
+        <button class="umkm-add-btn" onclick="addUmkm()">➕ Tambah UMKM</button>
+        <div class="umkm-status" id="umkm-status"></div>
+      </div>
+
+      <!-- Daftar UMKM -->
+      <div class="umkm-form" style="padding-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#f59e0b">🏪 Daftar UMKM Terdaftar</span>
+          <span class="cnt-badge" id="umkm-count">${umkmList.length} UMKM</span>
+        </div>
+        <input class="umkm-search" id="umkm-search" placeholder="🔍 Cari nama, kategori, atau alamat UMKM..." oninput="filterUmkm(this.value)" />
+        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Data ini ditampilkan langsung ke warga saat memilih Menu 12 di WhatsApp Bot.</div>
+        <div id="umkm-list">${umkmCards}</div>
       </div>
     </div>
 
@@ -1389,7 +1488,90 @@ async function deleteKegiatan(id, btn) {
   }
 }
 
-// ── Feedback ke Pelapor ───────────────────────────────────
+// ── UMKM Binaan ───────────────────────────────────────────
+async function addUmkm() {
+  const nama     = document.getElementById('umkm-nama').value.trim();
+  const kategori = document.getElementById('umkm-kategori').value.trim();
+  const alamat   = document.getElementById('umkm-alamat').value.trim();
+  const mapsUrl  = document.getElementById('umkm-maps').value.trim();
+  const kontak   = document.getElementById('umkm-kontak').value.trim();
+  const statusEl = document.getElementById('umkm-status');
+  statusEl.className = 'umkm-status';
+  statusEl.textContent = '';
+  if (!nama) { statusEl.className = 'umkm-status err'; statusEl.textContent = '⚠️ Nama UMKM wajib diisi.'; return; }
+  try {
+    const res  = await fetch('/api/umkm/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nama, kategori, alamat, mapsUrl, kontak })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    const u = json.umkm;
+    const card = document.createElement('div');
+    card.className = 'umkm-card'; card.id = 'umkmcard-' + u.id;
+    card.innerHTML = \`
+      <div class="umkm-card-ico">🏪</div>
+      <div class="umkm-card-body">
+        <div class="umkm-card-name">\${u.nama}</div>
+        <div class="umkm-card-meta">\${u.kategori ? \`<span class="umkm-chip">🏷️ \${u.kategori}</span>\` : ''}</div>
+        <div class="umkm-card-detail">
+          \${u.alamat  ? '📍 ' + u.alamat + '<br>' : ''}
+          \${u.kontak  ? '📱 ' + u.kontak + '<br>' : ''}
+          \${u.mapsUrl ? '🗺️ <a href="' + u.mapsUrl + '" target="_blank" rel="noopener">Buka Google Maps</a>' : ''}
+        </div>
+      </div>
+      <div class="umkm-card-actions">
+        <button class="umkm-del-btn" onclick="deleteUmkm('\${u.id}',this)">🗑️ Hapus</button>
+      </div>\`;
+    const list = document.getElementById('umkm-list');
+    const empty = list.querySelector('.umkm-empty');
+    if (empty) empty.remove();
+    list.prepend(card);
+    const countEl = document.getElementById('umkm-count');
+    const cur = parseInt(countEl.textContent) || 0;
+    countEl.textContent = (cur + 1) + ' UMKM';
+    ['umkm-nama','umkm-kategori','umkm-alamat','umkm-maps','umkm-kontak'].forEach(id => { document.getElementById(id).value = ''; });
+    statusEl.className = 'umkm-status ok'; statusEl.textContent = '✅ UMKM berhasil ditambahkan! Data sudah tampil di bot.';
+    setTimeout(() => { statusEl.className = 'umkm-status'; statusEl.textContent = ''; }, 4000);
+  } catch(e) {
+    statusEl.className = 'umkm-status err'; statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+async function deleteUmkm(id, btn) {
+  if (!confirm('Hapus UMKM ini dari direktori bot?')) return;
+  try {
+    const res  = await fetch('/api/umkm/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Gagal');
+    const card = document.getElementById('umkmcard-' + id);
+    if (card) card.remove();
+    const list = document.getElementById('umkm-list');
+    if (!list.querySelector('.umkm-card')) {
+      list.innerHTML = '<div class="umkm-empty"><div class="ico">📭</div>Belum ada data UMKM. Tambahkan melalui form di atas.</div>';
+    }
+    const countEl = document.getElementById('umkm-count');
+    const cur = parseInt(countEl.textContent) || 1;
+    countEl.textContent = Math.max(0, cur - 1) + ' UMKM';
+  } catch(e) {
+    alert('Gagal hapus: ' + e.message);
+  }
+}
+
+function filterUmkm(q) {
+  const kw = q.toLowerCase();
+  document.querySelectorAll('#umkm-list .umkm-card').forEach(card => {
+    const txt = card.textContent.toLowerCase();
+    card.style.display = txt.includes(kw) ? '' : 'none';
+  });
+}
+
+
 function previewFbFoto(input, laporanId) {
   const preview = document.getElementById('fb-preview-' + laporanId);
   if (input.files && input.files[0]) {
@@ -2583,7 +2765,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig(), getPemkoAutomationConfig()));
+  if (path_ === '/') return send(200, pageDashboard(getLaporan(), getGroups(), getGroupRouting(), getKegiatan(), getBroadcastChannels(), getBroadcastHistory(30), getWeatherBroadcastConfig(), getPemkoAutomationConfig(), getUmkm()));
   if (path_ === '/api/laporan') return send(200, JSON.stringify(getLaporan()), 'application/json');
 
   // ── API: Tambah Grup ──
@@ -2709,6 +2891,38 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
     }
+  }
+
+  // ── API: Tambah UMKM ──
+  if (path_ === '/api/umkm/add' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const { nama, kategori, alamat, mapsUrl, kontak } = body;
+      if (!nama?.trim()) return send(400, JSON.stringify({ ok: false, error: 'Nama UMKM wajib diisi' }), 'application/json');
+      const umkm = addUmkm({ nama: nama.trim(), kategori: (kategori||'').trim(), alamat: (alamat||'').trim(), mapsUrl: (mapsUrl||'').trim(), kontak: (kontak||'').trim() });
+      return send(200, JSON.stringify({ ok: true, umkm }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Hapus UMKM ──
+  if (path_ === '/api/umkm/delete' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const { id } = body;
+      if (!id) return send(400, JSON.stringify({ ok: false, error: 'id diperlukan' }), 'application/json');
+      const deleted = deleteUmkm(id);
+      if (!deleted) return send(404, JSON.stringify({ ok: false, error: 'UMKM tidak ditemukan' }), 'application/json');
+      return send(200, JSON.stringify({ ok: true }), 'application/json');
+    } catch (err) {
+      return send(500, JSON.stringify({ ok: false, error: err.message }), 'application/json');
+    }
+  }
+
+  // ── API: Daftar UMKM (JSON) ──
+  if (path_ === '/api/umkm/list' && req.method === 'GET') {
+    return send(200, JSON.stringify({ ok: true, umkm: getUmkm() }), 'application/json');
   }
 
   // ── API: Kirim Feedback ke Pelapor ──

@@ -19,7 +19,8 @@ import {
   getNextLaporanId, saveLaporan,
   getGroupRouting,
   getLivechatByJid, startLivechatSession, addLivechatMessage, closeLivechatSession,
-  buildKegiatanMenu, buildStatusLaporan
+  buildKegiatanMenu, buildStatusLaporan,
+  getUmkm
 } from './store.js';
 import {
   MENU_UTAMA, MENU_IMAGE_URL,
@@ -28,7 +29,8 @@ import {
   MENU_PROGRAM, MENU_PARIWISATA, WISATA,
   MENU_PINTAR_JOHOR,
   KATEGORI_PENGADUAN, KELURAHAN_LIST,
-  buildKategoriMenu, buildKelurahanMenu
+  buildKategoriMenu, buildKelurahanMenu,
+  buildUmkmMenu
 } from './menu.js';
 import { scrapeMedanBeritaArticles } from './medan-berita.js';
 import logger from './logger.js';
@@ -300,6 +302,13 @@ export const handleMessage = async (sock, msg) => {
       break;
     }
 
+    case '12': {
+      const umkmList = getUmkm();
+      await sendText(sock, senderJid, buildUmkmMenu(umkmList, 1));
+      logger.send(senderJid, 'Menu UMKM Binaan');
+      break;
+    }
+
     case 'W1': case 'w1':
     case 'W2': case 'w2':
     case 'W3': case 'w3':
@@ -329,13 +338,24 @@ export const handleMessage = async (sock, msg) => {
       break;
     }
 
-    default:
+    default: {
+      // Navigasi halaman UMKM: umkm1, umkm2, dst.
+      const umkmPageMatch = textMsg.match(/^umkm(\d+)$/i);
+      if (umkmPageMatch) {
+        const page = parseInt(umkmPageMatch[1], 10);
+        const umkmList = getUmkm();
+        await sendText(sock, senderJid, buildUmkmMenu(umkmList, page));
+        logger.send(senderJid, `UMKM halaman ${page}`);
+        break;
+      }
+
       if (textMsg.length > 0) {
         await sendText(sock, senderJid,
-          `❓ Maaf, saya tidak mengerti pesan Anda.\n\nKetik *menu* atau angka *1-8* untuk memilih layanan. 😊`
+          `❓ Maaf, saya tidak mengerti pesan Anda.\n\nKetik *menu* atau angka *1-12* untuk memilih layanan. 😊`
         );
         logger.warn('BOT', `Pesan tidak dikenali dari ${pushName}`, `"${textMsg}"`);
       }
+    }
   }
 };
 

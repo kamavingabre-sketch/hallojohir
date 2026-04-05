@@ -46,8 +46,11 @@ Halo! Saya siap membantu Anda dengan berbagai layanan administrasi kecamatan.
 1️⃣1️⃣ *Cek Status Laporan Saya*
    › Lihat riwayat & status laporan yang pernah dikirim
 
+1️⃣2️⃣ *UMKM Binaan Kecamatan Medan Johor* 🏪
+   › Direktori usaha mikro, kecil & menengah binaan kecamatan
+
 ━━━━━━━━━━━━━━━━━━━━━━━
-💡 Ketik *angka menu* (1-11) untuk memilih
+💡 Ketik *angka menu* (1-12) untuk memilih
 ━━━━━━━━━━━━━━━━━━━━━━━
 🏙️ *#MEDANUNTUKSEMUA*
 _Hallo Johor — Hadir untuk Warga Medan Johor_`;
@@ -406,8 +409,9 @@ Warga dapat melaporkan titik sampah liar untuk ditindaklanjuti.
 (Sistem Gerak Cepat Pengamanan Johor)
 Sistem keamanan lingkungan yang melibatkan seluruh warga untuk merespons gangguan keamanan secara cepat.
 
-🏪 *PROGRAM PEMBERDAYAAN UMKM*
+🏪 *UMKM BINAAN KECAMATAN MEDAN JOHOR*
 Pendampingan dan pelatihan bagi pelaku usaha mikro, kecil, dan menengah di wilayah Kecamatan Medan Johor.
+Ketik *12* di menu utama untuk melihat direktori lengkap UMKM binaan.
 
 🕌 *PROGRAM KEAGAMAAN KECAMATAN*
 Kegiatan Safari Jumat, pengajian akbar, dan kegiatan keagamaan rutin lintas kelurahan.
@@ -686,5 +690,55 @@ export const buildKelurahanMenu = () => {
   }
   text += `\n━━━━━━━━━━━━━━━━━━━━━━━\n`;
   text += `Ketik *angka* kelurahan (1-6)\nAtau ketik *0* untuk batal`;
+  return text;
+};
+
+/**
+ * Build pesan WhatsApp untuk direktori UMKM Binaan.
+ * @param {Array<{id,nama,alamat,mapsUrl,kategori,kontak}>} umkmList
+ * @param {number} page - halaman (1-based), tiap halaman 5 item
+ */
+export const buildUmkmMenu = (umkmList, page = 1) => {
+  const PAGE_SIZE = 5;
+  const total = umkmList.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const items = umkmList.slice(start, start + PAGE_SIZE);
+
+  let text = `🏪 *UMKM BINAAN KECAMATAN MEDAN JOHOR*\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  if (total === 0) {
+    text += `📭 *Belum ada data UMKM yang tersedia.*\n\n`;
+    text += `Hubungi Kantor Kecamatan Medan Johor untuk informasi lebih lanjut.\n`;
+  } else {
+    text += `📊 Total: *${total} UMKM* terdaftar`;
+    if (totalPages > 1) text += ` (halaman ${safePage}/${totalPages})`;
+    text += `\n\n`;
+
+    items.forEach((u, i) => {
+      const no = start + i + 1;
+      text += `*${no}. ${u.nama}*\n`;
+      if (u.kategori) text += `   🏷️ ${u.kategori}\n`;
+      if (u.alamat)   text += `   📍 ${u.alamat}\n`;
+      if (u.kontak)   text += `   📱 ${u.kontak}\n`;
+      if (u.mapsUrl)  text += `   🗺️ ${u.mapsUrl}\n`;
+      text += `\n`;
+    });
+
+    if (totalPages > 1) {
+      text += `━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      if (safePage < totalPages) text += `Ketik *umkm${safePage + 1}* untuk halaman berikutnya\n`;
+      if (safePage > 1)          text += `Ketik *umkm${safePage - 1}* untuk halaman sebelumnya\n`;
+    }
+  }
+
+  text += `\n━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `📞 Info & pendaftaran UMKM:\n`;
+  text += `*Kantor Kecamatan Medan Johor*\n`;
+  text += `📱 0813-6777-2047\n\n`;
+  text += `🏙️ *#MEDANUNTUKSEMUA*\n`;
+  text += `Ketik *0* untuk kembali ke menu`;
   return text;
 };

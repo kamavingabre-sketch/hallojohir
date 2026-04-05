@@ -596,3 +596,56 @@ export const markPemkoAutomationTriggered = (articleUrl) => {
     lastTriggeredAt: new Date().toISOString(),
   });
 };
+
+// ══════════════════════════════════════════════════════════
+//   UMKM BINAAN KECAMATAN MEDAN JOHOR
+// ══════════════════════════════════════════════════════════
+
+export const getUmkm = () => {
+  const data = readJSON('umkm_binaan.json');
+  return (data.umkm || []).sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
+};
+
+export const addUmkm = (item) => {
+  const data = readJSON('umkm_binaan.json');
+  if (!data.umkm) data.umkm = [];
+  const entry = {
+    id: `umkm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: new Date().toISOString(),
+    nama:     (item.nama     || '').trim(),
+    kategori: (item.kategori || '').trim(),
+    alamat:   (item.alamat   || '').trim(),
+    mapsUrl:  (item.mapsUrl  || '').trim(),
+    kontak:   (item.kontak   || '').trim(),
+  };
+  data.umkm.push(entry);
+  writeJSON('umkm_binaan.json', data);
+  return entry;
+};
+
+export const updateUmkm = (id, item) => {
+  const data = readJSON('umkm_binaan.json');
+  if (!data.umkm) return false;
+  const entry = data.umkm.find(u => u.id === id);
+  if (!entry) return false;
+  if (item.nama     !== undefined) entry.nama     = (item.nama     || '').trim();
+  if (item.kategori !== undefined) entry.kategori = (item.kategori || '').trim();
+  if (item.alamat   !== undefined) entry.alamat   = (item.alamat   || '').trim();
+  if (item.mapsUrl  !== undefined) entry.mapsUrl  = (item.mapsUrl  || '').trim();
+  if (item.kontak   !== undefined) entry.kontak   = (item.kontak   || '').trim();
+  entry.updatedAt = new Date().toISOString();
+  writeJSON('umkm_binaan.json', data);
+  return entry;
+};
+
+export const deleteUmkm = (id) => {
+  const data = readJSON('umkm_binaan.json');
+  if (!data.umkm) return false;
+  const before = data.umkm.length;
+  data.umkm = data.umkm.filter(u => u.id !== id);
+  if (data.umkm.length < before) {
+    writeJSON('umkm_binaan.json', data);
+    return true;
+  }
+  return false;
+};
